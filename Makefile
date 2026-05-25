@@ -1,6 +1,6 @@
 PYTHON = .venv/bin/python
 
-.PHONY: dev backend frontend sync seed-categories db-reset db-migrate setup
+.PHONY: dev backend frontend sync seed-categories db-reset db-migrate setup mark-synced
 
 setup:
 	python3 -m venv .venv
@@ -34,3 +34,11 @@ db-reset:
 	@rm -f data/finance.db
 	@make db-migrate
 	@echo "Database reset complete."
+
+mark-synced:
+	@echo "Marking all rows as already synced to Google Sheets..."
+	@sqlite3 data/finance.db "\
+		UPDATE transactions SET synced_to_sheets = 1, sheets_retry_count = 0; \
+		UPDATE income SET synced_to_sheets = 1, sheets_retry_count = 0; \
+		UPDATE assets SET synced_to_sheets = 1, sheets_retry_count = 0;"
+	@echo "Done. All rows marked as synced — no Sheets writes will be attempted for existing data."

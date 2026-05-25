@@ -81,6 +81,7 @@ make frontend  # Vite on http://localhost:5173
 | `make seed-categories` | Load category mappings from `config/categories.json` |
 | `make db-migrate` | Run pending database migrations |
 | `make db-reset` | Delete database and re-run migrations (destructive) |
+| `make mark-synced` | Mark all DB rows as already synced to Google Sheets (use on new machines) |
 
 ## API Endpoints
 
@@ -131,9 +132,12 @@ curl -X POST http://127.0.0.1:8000/api/import/assets
 # 5. Load category mappings (merchant → category rules)
 make seed-categories
 
-# 6. Retry any failed Sheets writes (pushes unsynced DB rows to Sheets)
-#    Rate-limited to 20 writes per call with backoff. Run multiple times if needed.
-curl -X POST http://127.0.0.1:8000/api/sheets/retry
+# 6. Mark all data as already synced to Sheets (prevents duplicate writes)
+#    Use this if your Google Sheet already has the data from another machine.
+make mark-synced
+
+# OR if this is the first machine and Sheets is empty, push data to Sheets:
+# curl -X POST http://127.0.0.1:8000/api/sheets/retry
 ```
 
 All import endpoints are idempotent — they skip rows that already exist in the DB. Imported data is marked `synced_to_sheets = 1` since it came from Sheets in the first place.
