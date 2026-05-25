@@ -1,0 +1,36 @@
+[
+  {
+    "label": "Groceries",
+    "patterns": ["whole foods", "trader jo", "tradre jo", "groceri", "shop fair", "costco", "spanish market", "safeway", "target groceri", "supermarket", "super market", "supersal", "osher ad", "publix", "kalustyans"],
+    "exclude": ["costco party"]
+  },
+  {
+    "label": "Transit",
+    "patterns": ["mta", "citibike", "citi bike", "nj transit", "njtransit", "septa", "amtrak", "metro pre-tax", "metro pre tax", "dc metro", "ourbus", "flix bus", "flixbus", "israel rail", "nyc ferry", "airtrain", "boston metro"]
+  },
+  {
+    "label": "Restaurants",
+    "patterns": ["dinner", "lunch", "sushi", "poke", "burger", "ramen", "brunch", "dim sum", "hibachi", "chipotle", "shake shack", "sweetgreen", "mcdonald", "mcds", "panda", "pad thai", "bagel", "noodle", "pizza", "uber eats", "doordash", "door dash", "wonder food", "too good to go", "in n out", "popeye", "din tai fung", "dumplings", "shawarma", "falafel", "restaurant", "pierozek"]
+  },
+  {
+    "label": "Uber / Lyft",
+    "patterns": ["uber", "lyft", "curb", "taxi", "bird scooter"]
+  },
+  {
+    "label": "Bars / Going Out",
+    "patterns": ["bar", "drinks", "going out", "club", "cover", "tavern", "lounge", "happy hour", "pub", "beer", "shots", "wine", "liquor", "liqour", "lineleap", "bowling", "wilfie & nell", "brooklyn bowl", "bayard's", "lucinda's", "amber sunset party"],
+    "exclude": ["barbershop", "barista", "barneys", "barcelona", "barber", "barre"]
+  },
+  {
+    "label": "Loans",
+    "patterns": ["loan"]
+  },
+  {
+    "label": "401k",
+    "patterns": ["401k"]
+  },
+  {
+    "label": "Subscriptions",
+    "patterns": ["chatgpt", "chat gpt", "claude", "gympass", "wellhub", "gym pass", "wordpress", "neetcode", "openai", "blink membership", "blink gym", "spotify", "netflix", "amazon prime"]
+  }
+]

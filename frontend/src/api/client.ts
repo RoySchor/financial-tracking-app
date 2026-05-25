@@ -52,6 +52,13 @@ export interface RangeSummary {
   by_month: { month: string; total: number }[];
 }
 
+export interface GroupedCategory {
+  label: string;
+  total: number;
+  count: number;
+  items: { type: string; total: number }[];
+}
+
 export interface CategoryMapping {
   id: number;
   pattern: string;
@@ -115,12 +122,16 @@ export const api = {
     request<Transaction[]>(`/transactions?month=${month}&year=${year}`),
   getTransactionSummary: (month: number, year: number) =>
     request<TransactionSummary>(`/transactions/summary?month=${month}&year=${year}`),
+  getGroupedTotals: (month: number, year: number) =>
+    request<GroupedCategory[]>(`/transactions/grouped?month=${month}&year=${year}`),
   getYearlyTotals: (year: number) =>
     request<MonthlyTotal[]>(`/transactions/yearly?year=${year}`),
   getTransactionsByRange: (start: string, end: string) =>
     request<Transaction[]>(`/transactions/range?start=${start}&end=${end}`),
   getRangeSummary: (start: string, end: string) =>
     request<RangeSummary>(`/transactions/range/summary?start=${start}&end=${end}`),
+  getRangeGrouped: (start: string, end: string) =>
+    request<GroupedCategory[]>(`/transactions/range/grouped?start=${start}&end=${end}`),
   addCashExpense: (data: { date: string; type: string; amount: number }) =>
     request<Transaction>('/transactions/cash', { method: 'POST', body: JSON.stringify(data) }),
   deleteTransaction: (id: string) =>

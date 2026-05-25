@@ -1,14 +1,21 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { Transaction } from '../api/client';
+import type { Transaction, GroupedCategory } from '../api/client';
+
+type SortField = 'date' | 'type' | 'amount';
+type SortDir = 'asc' | 'desc';
 
 export default function MonthView() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [grouped, setGrouped] = useState<GroupedCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
   useEffect(() => {
     loadTransactions();
@@ -17,8 +24,12 @@ export default function MonthView() {
   async function loadTransactions() {
     setLoading(true);
     try {
-      const data = await api.getTransactions(month, year);
+      const [data, groups] = await Promise.all([
+        api.getTransactions(month, year),
+        api.getGroupedTotals(month, year),
+      ]);
       setTransactions(data);
+      setGrouped(groups);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load transactions');
@@ -40,6 +51,23 @@ export default function MonthView() {
       setSubmitting(false);
     }
   }
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir(field === 'amount' ? 'desc' : 'asc');
+    }
+  }
+
+  const sorted = [...transactions].sort((a, b) => {
+    let cmp = 0;
+    if (sortField === 'date') cmp = a.date.localeCompare(b.date);
+    else if (sortField === 'type') cmp = a.type.localeCompare(b.type);
+    else cmp = a.amount - b.amount;
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
 
   const total = transactions.reduce((sum, t) => sum + t.amount, 0);
 
@@ -85,13 +113,51 @@ export default function MonthView() {
         )}
       </div>
 
+      {!loading && grouped.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {grouped.map((group) => (
+            <div
+              key={group.label}
+              className="relative bg-white dark:bg-gray-800 rounded-lg shadow p-3 cursor-pointer"
+              onClick={() => setExpandedGroup(expandedGroup === group.label ? null : group.label)}
+            >
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{group.label}</p>
+              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                ${group.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-xs text-gray-400">{group.count} txns</p>
+              {expandedGroup === group.label && group.items.length > 0 && (
+                <div className="absolute z-10 top-full left-0 mt-1 w-64 max-h-60 overflow-y-auto bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">{group.label} breakdown:</p>
+                  {group.items.slice(0, 20).map((item, i) => (
+                    <div key={i} className="flex justify-between text-xs py-0.5">
+                      <span className="text-gray-700 dark:text-gray-300 truncate mr-2">{item.type}</span>
+                      <span className="text-gray-900 dark:text-gray-100 font-medium whitespace-nowrap">${item.total.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {group.items.length > 20 && (
+                    <p className="text-xs text-gray-400 mt-1">+{group.items.length - 20} more</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">Date</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">Type</th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-300">Amount</th>
+              {([['date', 'Date', 'text-left'], ['type', 'Type', 'text-left'], ['amount', 'Amount', 'text-right']] as const).map(([field, label, align]) => (
+                <th
+                  key={field}
+                  onClick={() => toggleSort(field)}
+                  className={`px-4 py-3 ${align} text-sm font-medium text-gray-500 dark:text-gray-300 cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-100`}
+                >
+                  {label} {sortField === field ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                </th>
+              ))}
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">Source</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -108,7 +174,7 @@ export default function MonthView() {
             </tbody>
           ) : (
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {transactions.map((t) => (
+              {sorted.map((t) => (
                 <tr key={t.id}>
                   <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{t.date}</td>
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{t.type}</td>

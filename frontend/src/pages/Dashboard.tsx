@@ -107,10 +107,6 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
-              <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{status?.total_transactions ?? 0}</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
               <p className="text-sm text-gray-500 dark:text-gray-400">Last Sync</p>
               <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
                 {status?.last_sync ? new Date(status.last_sync).toLocaleString() : 'Never'}

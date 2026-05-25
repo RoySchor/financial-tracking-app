@@ -1,4 +1,6 @@
+import calendar
 import logging
+import uuid
 
 from database import get_db
 from services.sheets_client import get_spreadsheet
@@ -151,6 +153,37 @@ def _populate_recurring_rows(worksheet, month: int, year: int):
 
     if updates:
         worksheet.batch_update(updates, value_input_option="USER_ENTERED")
+
+    insert_recurring_transactions(month, year)
+
+
+def insert_recurring_transactions(month: int, year: int):
+    """Insert recurring expenses into the transactions table for a given month."""
+    last_day = calendar.monthrange(year, month)[1]
+
+    with get_db() as conn:
+        recurring = conn.execute(
+            "SELECT label, full_name, amount, day_of_month FROM recurring_expenses"
+        ).fetchall()
+
+        for expense in recurring:
+            if not expense["amount"] or expense["amount"] <= 0:
+                continue
+            day = min(expense["day_of_month"], last_day)
+            date_str = f"{year}-{month:02d}-{day:02d}"
+            existing = conn.execute(
+                """SELECT id FROM transactions
+                   WHERE date = ? AND type = ? AND source = 'recurring'""",
+                (date_str, expense["full_name"]),
+            ).fetchone()
+            if existing:
+                continue
+            conn.execute(
+                """INSERT INTO transactions (id, date, type, amount, source, synced_to_sheets)
+                   VALUES (?, ?, ?, ?, 'recurring', 1)""",
+                (str(uuid.uuid4()), date_str, expense["full_name"], expense["amount"]),
+            )
+        conn.commit()
 
 
 TEMPLATE_AMOUNT_COL = 3  # Column C — amount column in the expenses template

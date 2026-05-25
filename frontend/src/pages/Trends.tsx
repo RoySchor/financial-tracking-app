@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../api/client';
-import type { MonthlyTotal, Transaction, RangeSummary } from '../api/client';
+import type { MonthlyTotal, Transaction, RangeSummary, GroupedCategory } from '../api/client';
 
 interface DailySpend {
   day: number;
@@ -10,15 +10,23 @@ interface DailySpend {
 
 type ViewMode = 'month' | 'range';
 
+const PIE_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#e11d48',
+];
+
 export default function Trends() {
   const [mode, setMode] = useState<ViewMode>('month');
   const [yearly, setYearly] = useState<MonthlyTotal[]>([]);
   const [daily, setDaily] = useState<DailySpend[]>([]);
+  const [monthGrouped, setMonthGrouped] = useState<GroupedCategory[]>([]);
   const [year, setYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [rangeSummary, setRangeSummary] = useState<RangeSummary | null>(null);
+  const [rangeGrouped, setRangeGrouped] = useState<GroupedCategory[]>([]);
   const [loadingRange, setLoadingRange] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,11 +38,13 @@ export default function Trends() {
 
   async function loadMonthData() {
     try {
-      const [yearlyData, txns] = await Promise.all([
+      const [yearlyData, txns, grouped] = await Promise.all([
         api.getYearlyTotals(year),
         api.getTransactions(selectedMonth, year),
+        api.getGroupedTotals(selectedMonth, year),
       ]);
       setYearly(yearlyData);
+      setMonthGrouped(grouped);
 
       const byDay: Record<string, number> = {};
       txns.forEach((t: Transaction) => {
@@ -56,8 +66,12 @@ export default function Trends() {
     if (!startDate || !endDate) return;
     setLoadingRange(true);
     try {
-      const summary = await api.getRangeSummary(startDate, endDate);
+      const [summary, grouped] = await Promise.all([
+        api.getRangeSummary(startDate, endDate),
+        api.getRangeGrouped(startDate, endDate),
+      ]);
       setRangeSummary(summary);
+      setRangeGrouped(grouped);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load range data');
@@ -171,6 +185,47 @@ export default function Trends() {
               </LineChart>
             </ResponsiveContainer>
           </div>
+
+          {monthGrouped.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+                Spending by Category ({monthNames[selectedMonth - 1]} {year})
+              </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={monthGrouped.slice(0, 10)}
+                      dataKey="total"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={110}
+                    >
+                      {monthGrouped.slice(0, 10).map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                  {monthGrouped.map((cat, i) => (
+                    <div key={cat.label} className="flex justify-between items-center py-1 border-b border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: i < 10 ? PIE_COLORS[i % PIE_COLORS.length] : '#9ca3af' }} />
+                        <span className="text-sm text-gray-800 dark:text-gray-200 truncate">{cat.label}</span>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">${cat.total.toFixed(2)}</span>
+                        <span className="text-gray-400 text-xs ml-1">({cat.count}x)</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -191,20 +246,44 @@ export default function Trends() {
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Spending by Category</h2>
-            <div className="space-y-2">
-              {rangeSummary.by_category.map((cat) => (
-                <div key={cat.type} className="flex justify-between items-center py-1 border-b border-gray-100 dark:border-gray-700">
-                  <span className="text-gray-800 dark:text-gray-200">{cat.type}</span>
-                  <div className="text-right">
-                    <span className="font-medium text-gray-900 dark:text-gray-100">${cat.total.toFixed(2)}</span>
-                    <span className="text-gray-400 text-sm ml-2">({cat.count}x)</span>
-                  </div>
+          {rangeGrouped.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Spending by Category</h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={rangeGrouped.slice(0, 10)}
+                      dataKey="total"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={110}
+                    >
+                      {rangeGrouped.slice(0, 10).map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="space-y-1 max-h-[300px] overflow-y-auto">
+                  {rangeGrouped.map((cat, i) => (
+                    <div key={cat.label} className="flex justify-between items-center py-1 border-b border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: i < 10 ? PIE_COLORS[i % PIE_COLORS.length] : '#9ca3af' }} />
+                        <span className="text-sm text-gray-800 dark:text-gray-200 truncate">{cat.label}</span>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">${cat.total.toFixed(2)}</span>
+                        <span className="text-gray-400 text-xs ml-1">({cat.count}x)</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
