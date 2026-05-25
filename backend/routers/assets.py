@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from datetime import date as date_type
 
 from database import get_db
@@ -56,3 +56,14 @@ def upsert_asset(entry: AssetIn):
     result = dict(row)
     write_asset_to_sheets(result)
     return result
+
+
+@router.delete("/assets/{asset_id}")
+def delete_asset(asset_id: int):
+    with get_db() as conn:
+        existing = conn.execute("SELECT id FROM assets WHERE id = ?", (asset_id,)).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        conn.execute("DELETE FROM assets WHERE id = ?", (asset_id,))
+        conn.commit()
+    return {"deleted": True}

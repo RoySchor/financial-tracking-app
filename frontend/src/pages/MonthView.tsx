@@ -31,12 +31,12 @@ export default function MonthView() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Month View</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Month View</h1>
         <div className="flex gap-2">
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
-            className="border rounded px-3 py-2"
+            className="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           >
             {Array.from({ length: 12 }, (_, i) => (
               <option key={i + 1} value={i + 1}>
@@ -48,36 +48,36 @@ export default function MonthView() {
             type="number"
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="border rounded px-3 py-2 w-24"
+            className="border dark:border-gray-600 rounded px-3 py-2 w-24 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
           {error}
           <button onClick={loadTransactions} className="ml-4 underline text-sm">Retry</button>
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         {loading ? (
-          <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
+          <div className="h-6 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
         ) : (
-          <p className="text-lg font-semibold">
+          <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Total: ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </p>
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Date</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Type</th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Amount</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Source</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">Date</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">Type</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-500 dark:text-gray-300">Amount</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">Source</th>
             </tr>
           </thead>
           {loading ? (
@@ -85,19 +85,19 @@ export default function MonthView() {
               {[...Array(8)].map((_, i) => (
                 <tr key={i}>
                   <td colSpan={4} className="px-4 py-3">
-                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </td>
                 </tr>
               ))}
             </tbody>
           ) : (
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {transactions.map((t) => (
                 <tr key={t.id}>
-                  <td className="px-4 py-3 text-sm text-gray-700">{t.date}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{t.type}</td>
-                  <td className="px-4 py-3 text-sm text-right font-medium">${t.amount.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{t.account_name || t.source}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{t.date}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{t.type}</td>
+                  <td className="px-4 py-3 text-sm text-right font-medium text-gray-900 dark:text-gray-100">${t.amount.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{t.account_name || t.source}</td>
                 </tr>
               ))}
               {transactions.length === 0 && !error && (

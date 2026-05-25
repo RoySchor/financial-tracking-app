@@ -64,10 +64,10 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
         <div className="flex items-center gap-4">
           {status && status.failed_sheets_writes > 0 && (
-            <span className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded-full">
+            <span className="text-sm text-red-600 bg-red-50 dark:bg-red-900/30 px-3 py-1 rounded-full">
               {status.failed_sheets_writes} failed Sheets writes
             </span>
           )}
@@ -82,7 +82,7 @@ export default function Dashboard() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
           {error}
           <button onClick={loadData} className="ml-4 underline text-sm">Retry</button>
         </div>
@@ -92,27 +92,27 @@ export default function Dashboard() {
         {loading ? (
           <>
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="bg-white rounded-lg shadow p-6">
-                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-2" />
-                <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+                <div className="h-8 w-32 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
               </div>
             ))}
           </>
         ) : (
           <>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-sm text-gray-500">Monthly Expenses</p>
-              <p className="text-3xl font-bold text-gray-900">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Monthly Expenses</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
                 ${summary?.total?.toLocaleString('en-US', { minimumFractionDigits: 2 }) ?? '0.00'}
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-sm text-gray-500">Total Transactions</p>
-              <p className="text-3xl font-bold text-gray-900">{status?.total_transactions ?? 0}</p>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Total Transactions</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{status?.total_transactions ?? 0}</p>
             </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-sm text-gray-500">Last Sync</p>
-              <p className="text-lg font-medium text-gray-700">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Last Sync</p>
+              <p className="text-lg font-medium text-gray-700 dark:text-gray-300">
                 {status?.last_sync ? new Date(status.last_sync).toLocaleString() : 'Never'}
               </p>
             </div>
@@ -121,13 +121,13 @@ export default function Dashboard() {
       </div>
 
       {summary && summary.top5.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Top 5 Expenses This Month</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Top 5 Expenses This Month</h2>
           <div className="space-y-3">
             {summary.top5.map((item, i) => (
               <div key={i} className="flex justify-between items-center">
-                <span className="text-gray-700">{item.type}</span>
-                <span className="font-medium">${item.total.toFixed(2)}</span>
+                <span className="text-gray-700 dark:text-gray-300">{item.type}</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">${item.total.toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -135,12 +135,12 @@ export default function Dashboard() {
       )}
 
       {yearly.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{year} Monthly Expenses</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{year} Monthly Expenses</h2>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={yearly.map(d => ({ ...d, name: monthNames[d.month - 1] }))}>
-              <XAxis dataKey="name" />
-              <YAxis />
+              <XAxis dataKey="name" stroke="#9ca3af" />
+              <YAxis stroke="#9ca3af" />
               <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
               <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
             </BarChart>

@@ -148,6 +148,8 @@ export const api = {
   getAssets: () => request<Asset[]>('/assets'),
   upsertAsset: (data: Omit<Asset, 'id' | 'last_updated' | 'synced_to_sheets'>) =>
     request<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
+  deleteAsset: (id: number) =>
+    request<{ deleted: boolean }>(`/assets/${id}`, { method: 'DELETE' }),
 
   getAccounts: () => request<PlaidAccount[]>('/accounts'),
   updateAccount: (plaidAccountId: string, displayName: string) =>

@@ -74,17 +74,17 @@ export default function Trends() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center flex-wrap gap-4">
-        <h1 className="text-3xl font-bold text-gray-900">Trends</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Trends</h1>
         <div className="flex gap-2 items-center">
           <button
             onClick={() => setMode('month')}
-            className={`px-3 py-2 rounded ${mode === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-2 rounded ${mode === 'month' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
           >
             Single Month
           </button>
           <button
             onClick={() => setMode('range')}
-            className={`px-3 py-2 rounded ${mode === 'range' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+            className={`px-3 py-2 rounded ${mode === 'range' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}
           >
             Date Range
           </button>
@@ -96,7 +96,7 @@ export default function Trends() {
           <select
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="border rounded px-3 py-2"
+            className="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           >
             {monthNames.map((name, i) => (
               <option key={i + 1} value={i + 1}>{name}</option>
@@ -106,26 +106,26 @@ export default function Trends() {
             type="number"
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="border rounded px-3 py-2 w-24"
+            className="border dark:border-gray-600 rounded px-3 py-2 w-24 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
         </div>
       )}
 
       {mode === 'range' && (
         <div className="flex gap-2 items-center flex-wrap">
-          <label className="text-gray-600">From:</label>
+          <label className="text-gray-600 dark:text-gray-400">From:</label>
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border rounded px-3 py-2"
+            className="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
-          <label className="text-gray-600">To:</label>
+          <label className="text-gray-600 dark:text-gray-400">To:</label>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border rounded px-3 py-2"
+            className="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
           <button
             onClick={loadRangeData}
@@ -138,7 +138,7 @@ export default function Trends() {
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
           {error}
           <button onClick={mode === 'month' ? loadMonthData : loadRangeData} className="ml-4 underline text-sm">Retry</button>
         </div>
@@ -146,26 +146,26 @@ export default function Trends() {
 
       {mode === 'month' && (
         <>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Monthly Expenses ({year})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Monthly Expenses ({year})</h2>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={yearly.map(d => ({ ...d, name: monthNames[d.month - 1] }))}>
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name" stroke="#9ca3af" />
+                <YAxis stroke="#9ca3af" />
                 <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
                 <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               Daily Spending ({monthNames[selectedMonth - 1]} {year})
             </h2>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={daily}>
-                <XAxis dataKey="day" />
-                <YAxis />
+                <XAxis dataKey="day" stroke="#9ca3af" />
+                <YAxis stroke="#9ca3af" />
                 <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
                 <Line type="monotone" dataKey="total" stroke="#10b981" strokeWidth={2} dot={false} />
               </LineChart>
@@ -176,29 +176,29 @@ export default function Trends() {
 
       {mode === 'range' && rangeSummary && (
         <>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
               Total Spending: ${rangeSummary.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-gray-500 text-sm mb-4">{startDate} to {endDate}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{startDate} to {endDate}</p>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={rangeSummary.by_month.map(d => ({ ...d, name: formatMonthLabel(d.month) }))}>
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name" stroke="#9ca3af" />
+                <YAxis stroke="#9ca3af" />
                 <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
                 <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Spending by Category</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Spending by Category</h2>
             <div className="space-y-2">
               {rangeSummary.by_category.map((cat) => (
-                <div key={cat.type} className="flex justify-between items-center py-1 border-b border-gray-100">
-                  <span className="text-gray-800">{cat.type}</span>
+                <div key={cat.type} className="flex justify-between items-center py-1 border-b border-gray-100 dark:border-gray-700">
+                  <span className="text-gray-800 dark:text-gray-200">{cat.type}</span>
                   <div className="text-right">
-                    <span className="font-medium">${cat.total.toFixed(2)}</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">${cat.total.toFixed(2)}</span>
                     <span className="text-gray-400 text-sm ml-2">({cat.count}x)</span>
                   </div>
                 </div>
