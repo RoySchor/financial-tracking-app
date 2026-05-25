@@ -26,11 +26,22 @@ def update_account(plaid_account_id: str, body: PlaidAccountUpdate):
         if not existing:
             raise HTTPException(status_code=404, detail="Account not found")
 
-        conn.execute(
-            "UPDATE plaid_accounts SET display_name = ? WHERE plaid_account_id = ?",
-            (body.display_name, plaid_account_id),
-        )
-        conn.commit()
+        updates = []
+        params = []
+        if body.display_name is not None:
+            updates.append("display_name = ?")
+            params.append(body.display_name)
+        if body.is_liquid is not None:
+            updates.append("is_liquid = ?")
+            params.append(int(body.is_liquid))
+
+        if updates:
+            params.append(plaid_account_id)
+            conn.execute(
+                f"UPDATE plaid_accounts SET {', '.join(updates)} WHERE plaid_account_id = ?",
+                params,
+            )
+            conn.commit()
 
         updated = conn.execute(
             "SELECT * FROM plaid_accounts WHERE plaid_account_id = ?",

@@ -1,6 +1,6 @@
 PYTHON = .venv/bin/python
 
-.PHONY: dev backend frontend sync seed-categories db-reset db-migrate setup mark-synced
+.PHONY: dev backend frontend sync seed-categories seed-assets db-reset db-migrate setup mark-synced
 
 setup:
 	python3 -m venv .venv
@@ -24,6 +24,9 @@ sync:
 
 seed-categories:
 	@cd backend && ../$(PYTHON) seed_categories.py
+
+seed-assets:
+	@cd backend && ../$(PYTHON) seed_assets.py
 
 db-migrate:
 	@cd backend && ../$(PYTHON) -c "from database import run_migrations; run_migrations()"

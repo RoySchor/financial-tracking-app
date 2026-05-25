@@ -44,15 +44,20 @@ def get_holdings(account_id: str | None = Query(None)):
 @router.get("/investments/summary")
 def investment_summary():
     with get_db() as conn:
-        by_account = conn.execute(
+        plaid_accounts = conn.execute(
             """SELECT h.plaid_account_id,
                       COALESCE(pa.display_name, pa.official_name) as account_name,
                       pa.institution,
+                      pa.is_liquid,
                       SUM(h.institution_value) as total_value
                FROM holdings h
                LEFT JOIN plaid_accounts pa ON h.plaid_account_id = pa.plaid_account_id
                GROUP BY h.plaid_account_id
                ORDER BY total_value DESC""",
+        ).fetchall()
+
+        manual_accounts = conn.execute(
+            "SELECT id, bank_group, account_name, current_amount, last_updated, is_liquid FROM assets ORDER BY current_amount DESC"
         ).fetchall()
 
         by_type = conn.execute(
@@ -63,19 +68,68 @@ def investment_summary():
                ORDER BY total_value DESC""",
         ).fetchall()
 
-        total = conn.execute(
+        plaid_total = conn.execute(
             "SELECT COALESCE(SUM(institution_value), 0) as total FROM holdings"
+        ).fetchone()["total"]
+
+        manual_total = conn.execute(
+            "SELECT COALESCE(SUM(current_amount), 0) as total FROM assets"
         ).fetchone()["total"]
 
         as_of = conn.execute(
             "SELECT MAX(as_of_date) as latest FROM holdings"
         ).fetchone()["latest"]
 
+    by_account = []
+    liquid_total = 0.0
+    for r in plaid_accounts:
+        value = r["total_value"]
+        if r["is_liquid"]:
+            liquid_total += value
+        by_account.append({
+            "id": f"plaid_{r['plaid_account_id']}",
+            "plaid_account_id": r["plaid_account_id"],
+            "asset_id": None,
+            "account_name": r["account_name"],
+            "institution": r["institution"],
+            "total_value": value,
+            "source": "plaid",
+            "last_updated": None,
+        })
+    for r in manual_accounts:
+        value = r["current_amount"]
+        if r["is_liquid"]:
+            liquid_total += value
+        by_account.append({
+            "id": f"manual_{r['id']}",
+            "plaid_account_id": None,
+            "asset_id": r["id"],
+            "account_name": r["account_name"],
+            "institution": r["bank_group"],
+            "total_value": value,
+            "source": "manual",
+            "last_updated": r["last_updated"],
+        })
+
+    by_account.sort(key=lambda x: (x["institution"] or "", -x["total_value"]))
+
+    type_list = [dict(r) for r in by_type]
+    if manual_total > 0:
+        merged = False
+        for t in type_list:
+            if t["asset_type"] and t["asset_type"].lower() == "cash":
+                t["total_value"] += manual_total
+                merged = True
+                break
+        if not merged:
+            type_list.append({"asset_type": "cash", "total_value": manual_total})
+
     return {
-        "total_value": total,
+        "total_value": plaid_total + manual_total,
+        "liquid_total": liquid_total,
         "as_of_date": as_of,
-        "by_account": [dict(r) for r in by_account],
-        "by_type": [dict(r) for r in by_type],
+        "by_account": by_account,
+        "by_type": type_list,
     }
 
 

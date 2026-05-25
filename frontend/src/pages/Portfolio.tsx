@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis } from 'recharts';
 import { api } from '../api/client';
-import type { InvestmentSummary, PortfolioSnapshot } from '../api/client';
+import type { InvestmentSummary, PortfolioSnapshot, PortfolioAccount } from '../api/client';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
@@ -65,7 +65,7 @@ export default function Portfolio() {
         </div>
       ) : summary && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
               <p className="text-sm text-gray-500 dark:text-gray-400">Total Portfolio Value</p>
               <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
@@ -76,6 +76,12 @@ export default function Portfolio() {
                   As of {new Date(summary.as_of_date + 'T00:00:00').toLocaleDateString()}
                 </p>
               )}
+            </div>
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Total Liquid Assets</p>
+              <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                ${summary.liquid_total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
             </div>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
               <p className="text-sm text-gray-500 dark:text-gray-400">Accounts</p>
@@ -95,20 +101,32 @@ export default function Portfolio() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">By Account</h2>
               <div className="space-y-3">
-                {summary.by_account.map((acct) => (
+                {summary.by_account.map((acct: PortfolioAccount) => (
                   <Link
-                    key={acct.plaid_account_id}
-                    to={`/portfolio/${acct.plaid_account_id}`}
+                    key={acct.id}
+                    to={acct.source === 'manual' ? `/portfolio/manual/${acct.asset_id}` : `/portfolio/${acct.plaid_account_id}`}
                     className="flex justify-between items-center p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
                     <div>
-                      <span className="text-gray-900 dark:text-gray-100 font-medium">
-                        {acct.account_name || 'Unknown Account'}
-                      </span>
-                      {acct.institution && (
-                        <span className="text-gray-500 dark:text-gray-400 text-sm ml-2">
-                          {acct.institution}
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-900 dark:text-gray-100 font-medium">
+                          {acct.account_name || 'Unknown Account'}
                         </span>
+                        {acct.institution && (
+                          <span className="text-gray-500 dark:text-gray-400 text-sm">
+                            {acct.institution}
+                          </span>
+                        )}
+                        {acct.source === 'manual' && (
+                          <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded font-medium">
+                            Manual
+                          </span>
+                        )}
+                      </div>
+                      {acct.source === 'manual' && acct.last_updated && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                          Last updated: {new Date(acct.last_updated + 'T00:00:00').toLocaleDateString()}
+                        </p>
                       )}
                     </div>
                     <span className="font-semibold text-gray-900 dark:text-gray-100">

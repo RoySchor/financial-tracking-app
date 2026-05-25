@@ -14,6 +14,21 @@ logger = logging.getLogger(__name__)
 SHEETS_WRITES_PER_SYNC = 25
 SHEETS_WRITE_DELAY_SECONDS = 2
 
+_SKIP_PFC = {"TRANSFER_IN", "TRANSFER_OUT", "INCOME"}
+_SKIP_PFC_DETAILED = {"LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"}
+
+
+def _should_skip(txn) -> bool:
+    pfc = getattr(txn, "personal_finance_category", None)
+    if pfc:
+        primary = getattr(pfc, "primary", None) or (pfc.get("primary") if isinstance(pfc, dict) else None)
+        if primary and primary in _SKIP_PFC:
+            return True
+        detailed = getattr(pfc, "detailed", None) or (pfc.get("detailed") if isinstance(pfc, dict) else None)
+        if detailed and detailed in _SKIP_PFC_DETAILED:
+            return True
+    return False
+
 
 def _token_key(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()[:32]
@@ -49,6 +64,8 @@ def run_sync() -> dict:
                 for txn in transactions:
                     if txn.pending:
                         continue
+                    if _should_skip(txn):
+                        continue
                     _upsert_transaction(conn, txn, mappings)
                     synced_ids.append(txn.transaction_id)
                     total_added += 1
@@ -62,12 +79,16 @@ def run_sync() -> dict:
                 for txn in result["added"]:
                     if txn.pending:
                         continue
+                    if _should_skip(txn):
+                        continue
                     _upsert_transaction(conn, txn, mappings)
                     synced_ids.append(txn.transaction_id)
                     total_added += 1
 
                 for txn in result["modified"]:
                     if txn.pending:
+                        continue
+                    if _should_skip(txn):
                         continue
                     _upsert_transaction(conn, txn, mappings)
                     synced_ids.append(txn.transaction_id)

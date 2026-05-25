@@ -85,6 +85,12 @@ class AssetIn(BaseModel):
     notes: Optional[str] = None
 
 
+class AssetQuickUpdate(BaseModel):
+    current_amount: float
+    notes: Optional[str] = None
+    is_liquid: Optional[bool] = None
+
+
 class RecurringExpenseOut(BaseModel):
     id: int
     label: str
@@ -114,10 +120,12 @@ class PlaidAccountOut(BaseModel):
     institution: Optional[str] = None
     account_mask: Optional[str] = None
     account_type: Optional[str] = None
+    is_liquid: bool = False
 
 
 class PlaidAccountUpdate(BaseModel):
-    display_name: str
+    display_name: Optional[str] = None
+    is_liquid: Optional[bool] = None
 
 
 class StatusOut(BaseModel):

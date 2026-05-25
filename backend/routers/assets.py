@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from datetime import date as date_type
 
 from database import get_db
-from models import AssetOut, AssetIn
+from models import AssetOut, AssetIn, AssetQuickUpdate
 from services.sheets_writer import write_asset_to_sheets
 
 router = APIRouter(tags=["assets"])
@@ -51,8 +51,37 @@ def upsert_asset(entry: AssetIn):
             )
             row_id = cursor.lastrowid
 
+        conn.execute(
+            "INSERT OR REPLACE INTO portfolio_snapshots (asset_id, date, total_value) VALUES (?, ?, ?)",
+            (row_id, today, entry.current_amount),
+        )
         conn.commit()
         row = conn.execute("SELECT * FROM assets WHERE id = ?", (row_id,)).fetchone()
+    result = dict(row)
+    write_asset_to_sheets(result)
+    return result
+
+
+@router.patch("/assets/{asset_id}/quick", response_model=AssetOut)
+def quick_update_asset(asset_id: int, update: AssetQuickUpdate):
+    today = date_type.today().isoformat()
+    with get_db() as conn:
+        existing = conn.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Asset not found")
+        notes = update.notes if update.notes is not None else existing["notes"]
+        is_liquid = int(update.is_liquid) if update.is_liquid is not None else existing["is_liquid"]
+        conn.execute(
+            """UPDATE assets SET current_amount = ?, notes = ?, is_liquid = ?, last_updated = ?, synced_to_sheets = 0
+               WHERE id = ?""",
+            (update.current_amount, notes, is_liquid, today, asset_id),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO portfolio_snapshots (asset_id, date, total_value) VALUES (?, ?, ?)",
+            (asset_id, today, update.current_amount),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
     result = dict(row)
     write_asset_to_sheets(result)
     return result

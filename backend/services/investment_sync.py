@@ -1,9 +1,13 @@
 import hashlib
 import logging
+import time
 from datetime import date
+
+import plaid
 
 from database import get_db
 from services.plaid_client import get_plaid_client, get_access_tokens, get_investment_holdings, get_investment_transactions
+from services.sheets_client import get_spreadsheet
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +35,12 @@ def run_investment_sync() -> dict:
             continue
         try:
             result = _sync_one_item(client, token, institution)
+        except plaid.ApiException:
+            logger.warning(f"Investment sync failed for {institution}: ApiException")
+            _SKIP_TOKENS.add(_token_hash(token))
+            continue
         except Exception as e:
-            # Never log full exception — Plaid error bodies can contain access tokens
-            logger.warning(f"Investment sync failed for {institution}: {type(e).__name__}")
+            logger.warning(f"Investment sync failed for {institution}: {type(e).__name__}: {e}")
             continue
         if result is None:
             _SKIP_TOKENS.add(_token_hash(token))
@@ -41,6 +48,8 @@ def run_investment_sync() -> dict:
         accounts_synced += result["accounts"]
         holdings_total += result["holdings"]
         transactions_added += result["transactions_added"]
+
+    _sync_plaid_totals_to_sheets()
 
     return {
         "accounts_synced": accounts_synced,
@@ -70,18 +79,36 @@ def _sync_one_item(client, access_token: str, institution: str) -> dict | None:
         for account_id in account_ids:
             conn.execute("DELETE FROM holdings WHERE plaid_account_id = ?", (account_id,))
 
+        # Aggregate holdings by (account_id, security_id) — some institutions
+        # report multiple lots for the same security
+        aggregated: dict[tuple[str, str], dict] = {}
         for holding in holdings_data["holdings"]:
+            key = (holding.account_id, holding.security_id)
+            if key in aggregated:
+                agg = aggregated[key]
+                agg["quantity"] = (agg["quantity"] or 0) + (holding.quantity or 0)
+                agg["cost_basis"] = (agg["cost_basis"] or 0) + (holding.cost_basis or 0) if agg["cost_basis"] is not None or holding.cost_basis is not None else None
+                agg["institution_value"] = (agg["institution_value"] or 0) + (holding.institution_value or 0)
+            else:
+                aggregated[key] = {
+                    "quantity": holding.quantity,
+                    "cost_basis": holding.cost_basis,
+                    "institution_value": holding.institution_value,
+                    "institution_price": holding.institution_price,
+                }
+
+        for (acct_id, sec_id), agg in aggregated.items():
             conn.execute(
                 """INSERT INTO holdings (plaid_account_id, security_id, quantity, cost_basis,
                    institution_value, institution_price, as_of_date)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    holding.account_id,
-                    holding.security_id,
-                    holding.quantity,
-                    holding.cost_basis,
-                    holding.institution_value,
-                    holding.institution_price,
+                    acct_id,
+                    sec_id,
+                    agg["quantity"],
+                    agg["cost_basis"],
+                    agg["institution_value"],
+                    agg["institution_price"],
                     today,
                 ),
             )
@@ -106,8 +133,8 @@ def _sync_one_item(client, access_token: str, institution: str) -> dict | None:
                         txn.account_id,
                         txn.security_id,
                         txn.date.isoformat() if hasattr(txn.date, "isoformat") else str(txn.date),
-                        txn.type,
-                        txn.subtype,
+                        str(txn.type) if txn.type else None,
+                        str(txn.subtype) if txn.subtype else None,
                         txn.quantity,
                         txn.price,
                         txn.amount,
@@ -129,7 +156,7 @@ def _sync_one_item(client, access_token: str, institution: str) -> dict | None:
 def _upsert_security(conn, security):
     ticker = getattr(security, "ticker_symbol", None)
     name = getattr(security, "name", None)
-    sec_type = security.type if hasattr(security, "type") else None
+    sec_type = str(security.type) if hasattr(security, "type") and security.type else None
     close_price = getattr(security, "close_price", None)
     close_price_as_of = getattr(security, "close_price_as_of", None)
     if close_price_as_of and hasattr(close_price_as_of, "isoformat"):
@@ -147,3 +174,41 @@ def _upsert_security(conn, security):
              updated_at = datetime('now')""",
         (security.security_id, ticker, name, sec_type, close_price, close_price_as_of),
     )
+
+
+def _sync_plaid_totals_to_sheets():
+    spreadsheet = get_spreadsheet()
+    if spreadsheet is None:
+        return
+
+    with get_db() as conn:
+        accounts = conn.execute(
+            """SELECT pa.institution as bank_group,
+                      COALESCE(pa.display_name, pa.official_name) as account_name,
+                      SUM(h.institution_value) as total_value
+               FROM holdings h
+               JOIN plaid_accounts pa ON h.plaid_account_id = pa.plaid_account_id
+               GROUP BY h.plaid_account_id""",
+        ).fetchall()
+
+    if not accounts:
+        return
+
+    try:
+        worksheet = spreadsheet.worksheet("Rough Asset Portfolio")
+        all_values = worksheet.get_all_values()
+
+        for acct in accounts:
+            bank_group = acct["bank_group"]
+            account_name = acct["account_name"]
+            total = acct["total_value"]
+            if not bank_group or not account_name:
+                continue
+
+            for row_idx, row in enumerate(all_values, start=1):
+                if len(row) >= 2 and row[0] == bank_group and row[1] == account_name:
+                    worksheet.update(f"C{row_idx}", [[total]], value_input_option="USER_ENTERED")
+                    time.sleep(3)
+                    break
+    except Exception as e:
+        logger.warning(f"Plaid-to-sheets sync failed: {type(e).__name__}")

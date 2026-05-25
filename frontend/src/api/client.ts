@@ -138,10 +138,22 @@ export interface Holding {
   institution?: string | null;
 }
 
+export interface PortfolioAccount {
+  id: string;
+  plaid_account_id: string | null;
+  asset_id: number | null;
+  account_name: string | null;
+  institution: string | null;
+  total_value: number;
+  source: 'plaid' | 'manual';
+  last_updated: string | null;
+}
+
 export interface InvestmentSummary {
   total_value: number;
+  liquid_total: number;
   as_of_date: string | null;
-  by_account: { plaid_account_id: string; account_name: string | null; institution: string | null; total_value: number }[];
+  by_account: PortfolioAccount[];
   by_type: { asset_type: string | null; total_value: number }[];
 }
 
@@ -212,6 +224,8 @@ export const api = {
     request<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
   deleteAsset: (id: number) =>
     request<{ deleted: boolean }>(`/assets/${id}`, { method: 'DELETE' }),
+  quickUpdateAsset: (id: number, data: { current_amount: number; notes?: string | null }) =>
+    request<Asset>(`/assets/${id}/quick`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   getAccounts: () => request<PlaidAccount[]>('/accounts'),
   updateAccount: (plaidAccountId: string, displayName: string) =>
