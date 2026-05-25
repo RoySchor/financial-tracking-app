@@ -1,0 +1,25 @@
+# Financial data — NEVER commit
+.env
+data/
+*.db
+
+# Google service account credentials (never commit these)
+**/service-account*.json
+**/credentials*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store

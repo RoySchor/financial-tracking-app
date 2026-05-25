@@ -1,0 +1,15 @@
+[
+  {"pattern": "UBER EATS", "category": "Uber Eats", "priority": 10},
+  {"pattern": "UBER", "category": "Uber", "priority": 5},
+  {"pattern": "LYFT", "category": "Lyft", "priority": 5},
+  {"pattern": "MTA*NYCT", "category": "MTA", "priority": 0},
+  {"pattern": "ANTHROPIC", "category": "Claude AI", "priority": 0},
+  {"pattern": "OPENAI", "category": "ChatGPT", "priority": 0},
+  {"pattern": "SPOTIFY", "category": "Spotify", "priority": 0},
+  {"pattern": "NETFLIX", "category": "Netflix", "priority": 0},
+  {"pattern": "AMAZON PRIME", "category": "Amazon Prime", "priority": 10},
+  {"pattern": "AMZN", "category": "Amazon", "priority": 0},
+  {"pattern": "DOORDASH", "category": "DoorDash", "priority": 0},
+  {"pattern": "VENMO", "category": "Venmo", "priority": 0},
+  {"pattern": "APPLE.COM/BILL", "category": "Apple", "priority": 0}
+]
