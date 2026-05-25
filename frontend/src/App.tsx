@@ -8,6 +8,9 @@ import Assets from './pages/Assets';
 import Categories from './pages/Categories';
 import Recurring from './pages/Recurring';
 import AddExpense from './pages/AddExpense';
+import Portfolio from './pages/Portfolio';
+import HoldingsDetail from './pages/HoldingsDetail';
+import InvestmentActivity from './pages/InvestmentActivity';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -15,6 +18,7 @@ const navItems = [
   { to: '/trends', label: 'Trends' },
   { to: '/income', label: 'Income' },
   { to: '/assets', label: 'Assets' },
+  { to: '/portfolio', label: 'Portfolio' },
   { to: '/categories', label: 'Categories' },
   { to: '/recurring', label: 'Recurring' },
   { to: '/add', label: 'Add Expense' },
@@ -77,6 +81,10 @@ export default function App() {
             <Route path="/income" element={<Income />} />
             <Route path="/assets" element={<Assets />} />
             <Route path="/categories" element={<Categories />} />
+            <Route path="/portfolio" element={<Portfolio />} />
+            {/* Static path must precede :accountId param to avoid "activity" matching as an ID */}
+            <Route path="/portfolio/activity" element={<InvestmentActivity />} />
+            <Route path="/portfolio/:accountId" element={<HoldingsDetail />} />
             <Route path="/recurring" element={<Recurring />} />
             <Route path="/add" element={<AddExpense />} />
           </Routes>

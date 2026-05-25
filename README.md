@@ -2,7 +2,7 @@
 
 I used to have a Google Sheet that I manually updated to track my financial spending, savings, and tax situation. Needless to say it was quite manual.
 
-I made this to automate that tracking. It syncs credit card transactions via Plaid, stores them locally in SQLite, serves a React dashboard, and dual-writes everything to an existing Finance tracking Google Sheets.
+I made this to automate that tracking. It syncs credit card transactions and investment holdings via Plaid, stores them locally in SQLite, serves a React dashboard, and dual-writes expenses/income/assets to an existing Finance tracking Google Sheets.
 
 ## Architecture
 
@@ -23,8 +23,8 @@ I made this to automate that tracking. It syncs credit card transactions via Pla
 - **Backend**: Python FastAPI on port 8000 (bound to 127.0.0.1)
 - **Frontend**: React + TypeScript + Vite on port 5173
 - **Database**: SQLite with WAL mode, auto-migrating schema
-- **Plaid**: Transaction sync with cursor-based pagination and historical backfill
-- **Google Sheets**: Dual-write with to keep sheet in sync
+- **Plaid**: Transaction sync (cursor-based pagination) + investment holdings/transactions
+- **Google Sheets**: Dual-write to keep expense/income/asset sheets in sync
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ cp .env.example .env
 |----------|----------|-------------|
 | `PLAID_CLIENT_ID` | Yes | From Plaid Dashboard |
 | `PLAID_SECRET` | Yes | From Plaid Dashboard |
-| `PLAID_ACCESS_TOKEN_*` | Yes | One per institution (e.g. `_CHASE`, `_CAPITALONE`) |
+| `PLAID_ACCESS_TOKEN_*` | Yes | One per institution |
 | `GOOGLE_SHEETS_CREDENTIALS` | No | Path to service account JSON |
 | `GOOGLE_SHEETS_SPREADSHEET_ID` | No | Target spreadsheet ID |
 | `DB_PATH` | No | Defaults to `./data/finance.db` |
@@ -83,31 +83,9 @@ make frontend  # Vite on http://localhost:5173
 | `make db-reset` | Delete database and re-run migrations (destructive) |
 | `make mark-synced` | Mark all DB rows as already synced to Google Sheets (use on new machines) |
 
-## API Endpoints
+## API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Health check |
-| GET | `/api/status` | Sync status, DB size, failed writes |
-| POST | `/api/sync` | Trigger Plaid transaction sync |
-| GET | `/api/transactions?month=&year=` | List transactions for a month |
-| GET | `/api/transactions/summary?month=&year=` | Category breakdown |
-| GET | `/api/transactions/yearly?year=` | Monthly totals for the year |
-| GET | `/api/transactions/range?start=&end=` | Transactions in a date range |
-| GET | `/api/transactions/range/summary?start=&end=` | Category + monthly breakdown for range |
-| POST | `/api/transactions/cash` | Add a manual cash expense |
-| GET | `/api/categories` | List category mappings |
-| PUT | `/api/categories/{id}` | Update a category mapping |
-| GET | `/api/recurring` | List recurring expenses |
-| PUT | `/api/recurring/{id}` | Update a recurring expense |
-| GET | `/api/income` | List income entries |
-| POST | `/api/income` | Add income entry |
-| GET | `/api/assets` | List assets |
-| POST | `/api/assets` | Add/update an asset |
-| POST | `/api/sheets/retry` | Retry failed Sheets writes |
-| POST | `/api/import/expenses` | Import expenses from Google Sheets |
-| POST | `/api/import/income` | Import income from Google Sheets |
-| POST | `/api/import/assets` | Import assets from Google Sheets |
+Full endpoint reference in [`openapi.yaml`](./openapi.yaml). FastAPI also serves interactive docs at [localhost:8000/docs](http://127.0.0.1:8000/docs) when the backend is running.
 
 ## Initial Data Import (New Machine Setup)
 
@@ -142,7 +120,18 @@ make mark-synced
 
 All import endpoints are idempotent — they skip rows that already exist in the DB. Imported data is marked `synced_to_sheets = 1` since it came from Sheets in the first place.
 
-Note: Plaid only provides ~90 days of transaction history from most institutions. The expenses import fills in everything older from  my manual Sheets entries.
+Note: Plaid only provides ~90 days of transaction history from most institutions. The expenses import fills in everything older from my manual Sheets entries.
+
+## Investment Tracking
+
+The app syncs holdings and transactions from investment accounts (Schwab, Betterment, Wealthfront, etc.) via Plaid's Investments product.
+
+- **Holdings** are snapshot-based — each sync replaces the previous state for that account
+- **Investment transactions** (buys, sells, dividends, fees) are append-only and deduplicated by Plaid's transaction ID
+- **Portfolio snapshots** record daily total value per account for historical charting
+- Investment data lives only in the local DB — it is **not** dual-written to Google Sheets
+
+Investment accounts require separate Plaid Items with the `investments` product. Existing expense-only Items cannot retroactively gain new products. Tokens that don't support investments are cached and skipped on subsequent syncs.
 
 ## Google Sheets Integration
 

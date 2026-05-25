@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Personal finance tracker. Syncs credit card transactions from Plaid, stores in SQLite, displays via React dashboard, and dual-writes to Google Sheets.
+Personal finance tracker. Syncs credit card transactions and investment holdings/transactions from Plaid, stores in SQLite, displays via React dashboard, and dual-writes expenses/income/assets to Google Sheets.
 
 ## Commands
 
@@ -23,8 +23,8 @@ make db-reset         # Drop and recreate DB (destructive)
   - `database.py` — SQLite connection (`get_db()` context manager), migration runner
   - `models.py` — Pydantic request/response models
   - `migrations/` — Numbered SQL files (e.g. `001_initial.sql`)
-  - `routers/` — One file per resource (transactions, income, assets, recurring, categories, sync, status)
-  - `services/` — Business logic (Plaid sync, Sheets writing, category mapping)
+  - `routers/` — One file per resource (transactions, income, assets, recurring, categories, investments, accounts, sync, status)
+  - `services/` — Business logic (Plaid sync, investment sync, Sheets writing, category mapping)
 - `frontend/` — React + TypeScript + Vite + Tailwind
   - `src/api/client.ts` — API client with typed methods
   - `src/pages/` — One component per page
@@ -45,6 +45,10 @@ make db-reset         # Drop and recreate DB (destructive)
 
 **Falsy-safe checks**: Use `x if x is not None else default` not `x or default` — fields like `day_of_month=0` or `amount=0.0` are valid falsy values.
 
+**Investment sync**: Holdings are snapshot-based (DELETE + INSERT per account per sync). Investment transactions use INSERT OR IGNORE with Plaid's transaction ID as PK for natural deduplication. Plaid API calls must happen OUTSIDE `with get_db()` blocks to avoid holding SQLite open during HTTP calls.
+
+**Token safety in logging**: Never use `logger.exception()` or log `str(e)` for Plaid-related exceptions — `ApiException.body` can contain access tokens. Always log only `type(e).__name__`.
+
 **Frontend error handling**: Every page has `error` state, try/catch around API calls, and a red banner with Retry button.
 
 **TypeScript imports**: Project uses `verbatimModuleSyntax` — type-only imports must use `import type { X }` separate from value imports.
@@ -58,8 +62,10 @@ Add new migrations as `backend/migrations/NNN_description.sql`. They run automat
 - **This is a personal finance tracking app. Never include actual financial data (transactions, balances, account info, database files) in any commit. Ensure all financial data paths remain gitignored.**
 - `.env` contains Plaid tokens — **never commit, never log, never include in error messages**. Plaid tokens are irreplaceable (burning one loses the Item permanently).
 - Uvicorn binds to `127.0.0.1` only — financial data must not be network-accessible.
-- The sync endpoint error response must not include `str(e)` — exception details could contain tokens. Log the full error server-side, return only the exception type to the client.
+- The sync endpoint error response must not include `str(e)` — exception details could contain tokens. Return only the exception type to the client.
+- Never use `logger.exception()` for Plaid-related errors — tracebacks include `ApiException.body` which may contain access tokens. Use `logger.error(f"...: {type(e).__name__}")` instead.
 - Service account credential files are gitignored via `**/service-account*.json` and `**/credentials*.json`.
+- `.gitignore` must exclude: `.env`, `data/`, `*.db`.
 
 ## Environment
 

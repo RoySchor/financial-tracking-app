@@ -7,6 +7,8 @@ from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.model.transactions_get_request import TransactionsGetRequest
 from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
+from plaid.model.investments_holdings_get_request import InvestmentsHoldingsGetRequest
+from plaid.model.investments_transactions_get_request import InvestmentsTransactionsGetRequest
 
 
 def get_plaid_client():
@@ -70,6 +72,41 @@ def sync_transactions(client, access_token: str, cursor: str | None):
         "removed": removed,
         "cursor": next_cursor,
     }
+
+
+def get_investment_holdings(client, access_token: str) -> dict | None:
+    try:
+        request = InvestmentsHoldingsGetRequest(access_token=access_token)
+        response = client.investments_holdings_get(request)
+        return {
+            "accounts": response.accounts,
+            "holdings": response.holdings,
+            "securities": response.securities,
+        }
+    except plaid.ApiException as e:
+        if "PRODUCTS_NOT_READY" in str(e.body) or "PRODUCT_NOT_READY" in str(e.body):
+            return None
+        raise
+
+
+def get_investment_transactions(client, access_token: str, start_date: date | None = None, end_date: date | None = None) -> list | None:
+    if not start_date:
+        start_date = date.today() - timedelta(days=30)
+    if not end_date:
+        end_date = date.today()
+
+    try:
+        request = InvestmentsTransactionsGetRequest(
+            access_token=access_token,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        response = client.investments_transactions_get(request)
+        return response.investment_transactions
+    except plaid.ApiException as e:
+        if "PRODUCTS_NOT_READY" in str(e.body) or "PRODUCT_NOT_READY" in str(e.body):
+            return None
+        raise
 
 
 def backfill_transactions(client, access_token: str, start_date: date | None = None):

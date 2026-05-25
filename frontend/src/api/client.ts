@@ -115,6 +115,55 @@ export interface SyncResult {
   modified: number;
   removed: number;
   error?: string;
+  investments?: {
+    accounts_synced: number;
+    holdings_total: number;
+    transactions_added: number;
+  };
+}
+
+export interface Holding {
+  plaid_account_id: string;
+  security_id: string;
+  quantity: number;
+  cost_basis: number | null;
+  institution_value: number;
+  institution_price: number;
+  as_of_date: string;
+  ticker: string | null;
+  security_name: string | null;
+  security_type: string | null;
+  close_price_as_of: string | null;
+  account_name?: string | null;
+  institution?: string | null;
+}
+
+export interface InvestmentSummary {
+  total_value: number;
+  as_of_date: string | null;
+  by_account: { plaid_account_id: string; account_name: string | null; institution: string | null; total_value: number }[];
+  by_type: { asset_type: string | null; total_value: number }[];
+}
+
+export interface PortfolioSnapshot {
+  date: string;
+  total_value: number;
+}
+
+export interface InvestmentTransaction {
+  plaid_investment_transaction_id: string;
+  plaid_account_id: string;
+  security_id: string | null;
+  date: string;
+  type: string;
+  subtype: string | null;
+  quantity: number | null;
+  price: number | null;
+  amount: number | null;
+  name: string | null;
+  ticker: string | null;
+  security_name: string | null;
+  account_name: string | null;
 }
 
 export const api = {
@@ -172,4 +221,17 @@ export const api = {
     }),
 
   retrySheets: () => request<{ message: string }>('/sheets/retry', { method: 'POST' }),
+
+  getInvestmentHoldings: (accountId?: string) =>
+    request<Holding[]>(accountId ? `/investments/holdings?account_id=${accountId}` : '/investments/holdings'),
+  getInvestmentSummary: () =>
+    request<InvestmentSummary>('/investments/summary'),
+  getPortfolioHistory: (months: number = 12) =>
+    request<PortfolioSnapshot[]>(`/investments/history?months=${months}`),
+  getInvestmentTransactions: (start: string, end: string, accountId?: string, type?: string) => {
+    let url = `/investments/transactions?start=${start}&end=${end}`;
+    if (accountId) url += `&account_id=${accountId}`;
+    if (type) url += `&type=${type}`;
+    return request<InvestmentTransaction[]>(url);
+  },
 };

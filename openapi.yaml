@@ -1,0 +1,234 @@
+openapi: 3.0.3
+info:
+  title: My Finances API
+  version: 1.0.0
+  description: Personal finance tracker — Plaid sync, investments, expenses, income, assets.
+
+servers:
+  - url: http://127.0.0.1:8000/api
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: [system]
+      responses:
+        "200":
+          description: OK
+
+  /status:
+    get:
+      summary: Sync status, DB size, failed Sheets writes
+      tags: [system]
+
+  /sync:
+    post:
+      summary: Trigger Plaid sync (transactions + investments)
+      tags: [sync]
+      responses:
+        "200":
+          description: Sync results (investments field may contain error without failing overall)
+
+  /accounts:
+    get:
+      summary: List linked Plaid accounts
+      tags: [accounts]
+  /accounts/{plaid_account_id}:
+    put:
+      summary: Update account display name
+      tags: [accounts]
+
+  /transactions:
+    get:
+      summary: List transactions for a month
+      tags: [transactions]
+      parameters:
+        - name: month
+          in: query
+          schema: { type: integer }
+        - name: year
+          in: query
+          schema: { type: integer }
+  /transactions/summary:
+    get:
+      summary: Category breakdown for a month
+      tags: [transactions]
+      parameters:
+        - name: month
+          in: query
+          schema: { type: integer }
+        - name: year
+          in: query
+          schema: { type: integer }
+  /transactions/grouped:
+    get:
+      summary: Transactions grouped by category for a month
+      tags: [transactions]
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: year
+          in: query
+          required: true
+          schema: { type: integer }
+  /transactions/range:
+    get:
+      summary: Transactions in a date range
+      tags: [transactions]
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: end
+          in: query
+          required: true
+          schema: { type: string, format: date }
+  /transactions/range/summary:
+    get:
+      summary: Category + monthly breakdown for a date range
+      tags: [transactions]
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: end
+          in: query
+          required: true
+          schema: { type: string, format: date }
+  /transactions/range/grouped:
+    get:
+      summary: Grouped transactions for a date range
+      tags: [transactions]
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: end
+          in: query
+          required: true
+          schema: { type: string, format: date }
+  /transactions/yearly:
+    get:
+      summary: Monthly totals for a year
+      tags: [transactions]
+      parameters:
+        - name: year
+          in: query
+          schema: { type: integer }
+  /transactions/{transaction_id}:
+    delete:
+      summary: Delete a transaction
+      tags: [transactions]
+  /transactions/cash:
+    post:
+      summary: Add a manual cash expense
+      tags: [transactions]
+
+  /categories:
+    get:
+      summary: List category mappings
+      tags: [categories]
+    post:
+      summary: Create a category mapping
+      tags: [categories]
+  /categories/{mapping_id}:
+    delete:
+      summary: Delete a category mapping
+      tags: [categories]
+
+  /recurring:
+    get:
+      summary: List recurring expenses
+      tags: [recurring]
+    post:
+      summary: Create a recurring expense
+      tags: [recurring]
+  /recurring/{expense_id}:
+    put:
+      summary: Update a recurring expense
+      tags: [recurring]
+    delete:
+      summary: Delete a recurring expense
+      tags: [recurring]
+
+  /income:
+    get:
+      summary: List income entries
+      tags: [income]
+    post:
+      summary: Add an income entry
+      tags: [income]
+
+  /assets:
+    get:
+      summary: List assets
+      tags: [assets]
+    post:
+      summary: Add or update an asset
+      tags: [assets]
+  /assets/{asset_id}:
+    delete:
+      summary: Delete an asset
+      tags: [assets]
+
+  /investments/holdings:
+    get:
+      summary: All holdings (optionally filtered by account)
+      tags: [investments]
+      parameters:
+        - name: account_id
+          in: query
+          schema: { type: string }
+  /investments/summary:
+    get:
+      summary: Portfolio summary — total value, by account, by asset type
+      tags: [investments]
+  /investments/history:
+    get:
+      summary: Portfolio value over time (daily snapshots)
+      tags: [investments]
+      parameters:
+        - name: months
+          in: query
+          schema: { type: integer, default: 12 }
+  /investments/transactions:
+    get:
+      summary: Investment transactions (buys, sells, dividends, fees)
+      tags: [investments]
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: end
+          in: query
+          required: true
+          schema: { type: string, format: date }
+        - name: account_id
+          in: query
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string }
+
+  /sheets/retry:
+    post:
+      summary: Retry failed Google Sheets writes
+      tags: [sheets]
+  /import/expenses:
+    post:
+      summary: Import historical expenses from Google Sheets
+      tags: [import]
+  /import/income:
+    post:
+      summary: Import income from Google Sheets
+      tags: [import]
+  /import/assets:
+    post:
+      summary: Import assets from Google Sheets
+      tags: [import]
