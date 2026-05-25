@@ -156,6 +156,10 @@ def _populate_recurring_rows(worksheet, month: int, year: int):
 TEMPLATE_AMOUNT_COL = 3  # Column C — amount column in the expenses template
 
 
+TEMPLATE_TYPE_COL = 2  # Column B — type/label column in the expenses template
+TEMPLATE_DATA_START_ROW = 3  # Data starts at row 3 (row 1 = title, row 2 = headers)
+
+
 def update_template_recurring(label: str, amount: float, full_name: str | None = None):
     spreadsheet = get_spreadsheet()
     if spreadsheet is None:
@@ -169,8 +173,12 @@ def update_template_recurring(label: str, amount: float, full_name: str | None =
     all_values = template.get_all_values()
 
     for row_idx, row in enumerate(all_values, start=1):
-        row_text = " ".join(row).lower()
-        if label.lower() in row_text:
+        if row_idx < TEMPLATE_DATA_START_ROW:
+            continue
+        if len(row) < TEMPLATE_TYPE_COL:
+            continue
+        cell_value = row[TEMPLATE_TYPE_COL - 1].strip().lower()
+        if cell_value == label.lower() or (full_name and cell_value == full_name.lower()):
             template.update_cell(row_idx, TEMPLATE_AMOUNT_COL, amount)
             return True
 

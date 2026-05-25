@@ -76,8 +76,8 @@ export default function Recurring() {
   return (
     <div className="space-y-8">
       <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Recurring Expenses</h1>
-      <p className="text-gray-500 dark:text-gray-400">
-        Changes here update both the database and the _Expenses Template in Google Sheets.
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Updates here sync amounts to the _Expenses Template (matched by label). New expenses must be manually added to the template in Google Sheets to appear in future month sheets.
       </p>
 
       {error && (

@@ -137,10 +137,10 @@ export default function Dashboard() {
       {yearly.length > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{year} Monthly Expenses</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={yearly.map(d => ({ ...d, name: monthNames[d.month - 1] }))}>
-              <XAxis dataKey="name" stroke="#9ca3af" />
-              <YAxis stroke="#9ca3af" />
+          <ResponsiveContainer width="100%" height={340}>
+            <BarChart data={yearly.map(d => ({ ...d, name: monthNames[d.month - 1] }))} margin={{ top: 10, right: 20, bottom: 30, left: 30 }}>
+              <XAxis dataKey="name" stroke="#9ca3af" label={{ value: 'Month', position: 'bottom', offset: 15, fill: '#9ca3af' }} />
+              <YAxis stroke="#9ca3af" label={{ value: 'Amount ($)', angle: -90, position: 'left', offset: 15, dy: -20, fill: '#9ca3af' }} />
               <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
               <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
             </BarChart>

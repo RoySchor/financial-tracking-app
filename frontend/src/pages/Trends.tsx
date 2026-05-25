@@ -148,10 +148,10 @@ export default function Trends() {
         <>
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Monthly Expenses ({year})</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={yearly.map(d => ({ ...d, name: monthNames[d.month - 1] }))}>
-                <XAxis dataKey="name" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
+            <ResponsiveContainer width="100%" height={340}>
+              <BarChart data={yearly.map(d => ({ ...d, name: monthNames[d.month - 1] }))} margin={{ top: 10, right: 20, bottom: 30, left: 30 }}>
+                <XAxis dataKey="name" stroke="#9ca3af" label={{ value: 'Month', position: 'bottom', offset: 15, fill: '#9ca3af' }} />
+                <YAxis stroke="#9ca3af" label={{ value: 'Amount ($)', angle: -90, position: 'left', offset: 15, dy: -20, fill: '#9ca3af' }} />
                 <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
                 <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -162,10 +162,10 @@ export default function Trends() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
               Daily Spending ({monthNames[selectedMonth - 1]} {year})
             </h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={daily}>
-                <XAxis dataKey="day" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
+            <ResponsiveContainer width="100%" height={290}>
+              <LineChart data={daily} margin={{ top: 10, right: 20, bottom: 30, left: 30 }}>
+                <XAxis dataKey="day" stroke="#9ca3af" label={{ value: 'Day of Month', position: 'bottom', offset: 15, fill: '#9ca3af' }} />
+                <YAxis stroke="#9ca3af" label={{ value: 'Amount ($)', angle: -90, position: 'left', offset: 15, dy: -20, fill: '#9ca3af' }} />
                 <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
                 <Line type="monotone" dataKey="total" stroke="#10b981" strokeWidth={2} dot={false} />
               </LineChart>
@@ -181,10 +181,10 @@ export default function Trends() {
               Total Spending: ${rangeSummary.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{startDate} to {endDate}</p>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={rangeSummary.by_month.map(d => ({ ...d, name: formatMonthLabel(d.month) }))}>
-                <XAxis dataKey="name" stroke="#9ca3af" />
-                <YAxis stroke="#9ca3af" />
+            <ResponsiveContainer width="100%" height={340}>
+              <BarChart data={rangeSummary.by_month.map(d => ({ ...d, name: formatMonthLabel(d.month) }))} margin={{ top: 10, right: 20, bottom: 30, left: 30 }}>
+                <XAxis dataKey="name" stroke="#9ca3af" label={{ value: 'Month', position: 'bottom', offset: 15, fill: '#9ca3af' }} />
+                <YAxis stroke="#9ca3af" label={{ value: 'Amount ($)', angle: -90, position: 'left', offset: 15, dy: -20, fill: '#9ca3af' }} />
                 <Tooltip formatter={(val) => `$${Number(val).toFixed(2)}`} />
                 <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
