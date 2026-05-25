@@ -124,6 +124,17 @@ def yearly_totals(year: int = Query(...)):
     return [{"month": int(r["month"]), "total": r["total"]} for r in rows]
 
 
+@router.delete("/transactions/{transaction_id}")
+def delete_transaction(transaction_id: str):
+    with get_db() as conn:
+        existing = conn.execute("SELECT id FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        conn.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        conn.commit()
+    return {"deleted": True}
+
+
 @router.post("/transactions/cash", response_model=TransactionOut)
 def add_cash_expense(expense: CashExpenseIn):
     txn_id = str(uuid.uuid4())

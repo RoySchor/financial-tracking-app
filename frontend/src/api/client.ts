@@ -123,6 +123,8 @@ export const api = {
     request<RangeSummary>(`/transactions/range/summary?start=${start}&end=${end}`),
   addCashExpense: (data: { date: string; type: string; amount: number }) =>
     request<Transaction>('/transactions/cash', { method: 'POST', body: JSON.stringify(data) }),
+  deleteTransaction: (id: string) =>
+    request<{ deleted: boolean }>(`/transactions/${id}`, { method: 'DELETE' }),
 
   triggerSync: () => request<SyncResult>('/sync', { method: 'POST' }),
   getStatus: () => request<AppStatus>('/status'),
