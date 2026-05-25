@@ -7,6 +7,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [yearly, setYearly] = useState<MonthlyTotal[]>([]);
   const [status, setStatus] = useState<AppStatus | null>(null);
+  const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,6 +27,7 @@ export default function Dashboard() {
   }, []);
 
   async function loadData(): Promise<AppStatus | null> {
+    setLoading(true);
     try {
       const [s, y, st] = await Promise.all([
         api.getTransactionSummary(month, year),
@@ -40,6 +42,8 @@ export default function Dashboard() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load data');
       return null;
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -85,22 +89,35 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <p className="text-sm text-gray-500">Monthly Expenses</p>
-          <p className="text-3xl font-bold text-gray-900">
-            ${summary?.total?.toLocaleString('en-US', { minimumFractionDigits: 2 }) ?? '0.00'}
-          </p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <p className="text-sm text-gray-500">Total Transactions</p>
-          <p className="text-3xl font-bold text-gray-900">{status?.total_transactions ?? 0}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <p className="text-sm text-gray-500">Last Sync</p>
-          <p className="text-lg font-medium text-gray-700">
-            {status?.last_sync ? new Date(status.last_sync).toLocaleString() : 'Never'}
-          </p>
-        </div>
+        {loading ? (
+          <>
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="bg-white rounded-lg shadow p-6">
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-2" />
+                <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div className="bg-white rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500">Monthly Expenses</p>
+              <p className="text-3xl font-bold text-gray-900">
+                ${summary?.total?.toLocaleString('en-US', { minimumFractionDigits: 2 }) ?? '0.00'}
+              </p>
+            </div>
+            <div className="bg-white rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500">Total Transactions</p>
+              <p className="text-3xl font-bold text-gray-900">{status?.total_transactions ?? 0}</p>
+            </div>
+            <div className="bg-white rounded-lg shadow p-6">
+              <p className="text-sm text-gray-500">Last Sync</p>
+              <p className="text-lg font-medium text-gray-700">
+                {status?.last_sync ? new Date(status.last_sync).toLocaleString() : 'Never'}
+              </p>
+            </div>
+          </>
+        )}
       </div>
 
       {summary && summary.top5.length > 0 && (

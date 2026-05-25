@@ -21,8 +21,18 @@ export interface Transaction {
   amount: number;
   source: string;
   plaid_account_id: string | null;
+  account_name: string | null;
   synced_to_sheets: boolean;
   created_at: string | null;
+}
+
+export interface PlaidAccount {
+  plaid_account_id: string;
+  official_name: string | null;
+  display_name: string | null;
+  institution: string | null;
+  account_mask: string | null;
+  account_type: string | null;
 }
 
 export interface TransactionSummary {
@@ -34,6 +44,12 @@ export interface TransactionSummary {
 export interface MonthlyTotal {
   month: number;
   total: number;
+}
+
+export interface RangeSummary {
+  total: number;
+  by_category: { type: string; total: number; count: number }[];
+  by_month: { month: string; total: number }[];
 }
 
 export interface CategoryMapping {
@@ -101,6 +117,10 @@ export const api = {
     request<TransactionSummary>(`/transactions/summary?month=${month}&year=${year}`),
   getYearlyTotals: (year: number) =>
     request<MonthlyTotal[]>(`/transactions/yearly?year=${year}`),
+  getTransactionsByRange: (start: string, end: string) =>
+    request<Transaction[]>(`/transactions/range?start=${start}&end=${end}`),
+  getRangeSummary: (start: string, end: string) =>
+    request<RangeSummary>(`/transactions/range/summary?start=${start}&end=${end}`),
   addCashExpense: (data: { date: string; type: string; amount: number }) =>
     request<Transaction>('/transactions/cash', { method: 'POST', body: JSON.stringify(data) }),
 
@@ -114,8 +134,12 @@ export const api = {
     request<{ deleted: boolean }>(`/categories/${id}`, { method: 'DELETE' }),
 
   getRecurring: () => request<RecurringExpense[]>('/recurring'),
+  createRecurring: (data: { label: string; full_name: string; amount: number; day_of_month: number }) =>
+    request<RecurringExpense>('/recurring', { method: 'POST', body: JSON.stringify(data) }),
   updateRecurring: (id: number, data: { amount: number; full_name?: string; day_of_month?: number }) =>
     request<RecurringExpense>(`/recurring/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRecurring: (id: number) =>
+    request<{ deleted: boolean }>(`/recurring/${id}`, { method: 'DELETE' }),
 
   getIncome: (year: number) => request<IncomeEntry[]>(`/income?year=${year}`),
   addIncome: (data: Omit<IncomeEntry, 'id' | 'synced_to_sheets' | 'created_at'>) =>
@@ -124,6 +148,13 @@ export const api = {
   getAssets: () => request<Asset[]>('/assets'),
   upsertAsset: (data: Omit<Asset, 'id' | 'last_updated' | 'synced_to_sheets'>) =>
     request<Asset>('/assets', { method: 'POST', body: JSON.stringify(data) }),
+
+  getAccounts: () => request<PlaidAccount[]>('/accounts'),
+  updateAccount: (plaidAccountId: string, displayName: string) =>
+    request<PlaidAccount>(`/accounts/${plaidAccountId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ display_name: displayName }),
+    }),
 
   retrySheets: () => request<{ message: string }>('/sheets/retry', { method: 'POST' }),
 };

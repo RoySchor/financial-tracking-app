@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from database import get_db
-from models import RecurringExpenseOut, RecurringExpenseIn
+from models import RecurringExpenseOut, RecurringExpenseIn, RecurringExpenseCreate
 from services.sheets_template import update_template_recurring
 
 router = APIRouter(tags=["recurring"])
@@ -12,6 +12,45 @@ def list_recurring():
     with get_db() as conn:
         rows = conn.execute("SELECT * FROM recurring_expenses ORDER BY day_of_month").fetchall()
     return [dict(r) for r in rows]
+
+
+@router.post("/recurring", response_model=RecurringExpenseOut, status_code=201)
+def create_recurring(data: RecurringExpenseCreate):
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT id FROM recurring_expenses WHERE label = ?", (data.label,)
+        ).fetchone()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Label '{data.label}' already exists")
+
+        conn.execute(
+            """INSERT INTO recurring_expenses (label, full_name, amount, day_of_month)
+               VALUES (?, ?, ?, ?)""",
+            (data.label, data.full_name, data.amount, data.day_of_month),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM recurring_expenses WHERE label = ?", (data.label,)
+        ).fetchone()
+
+    result = dict(row)
+    update_template_recurring(result["label"], result["amount"], result["full_name"])
+    return result
+
+
+@router.delete("/recurring/{expense_id}")
+def delete_recurring(expense_id: int):
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM recurring_expenses WHERE id = ?", (expense_id,)
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Recurring expense not found")
+
+        conn.execute("DELETE FROM recurring_expenses WHERE id = ?", (expense_id,))
+        conn.commit()
+
+    return {"deleted": True}
 
 
 @router.put("/recurring/{expense_id}", response_model=RecurringExpenseOut)

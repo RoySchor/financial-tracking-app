@@ -4,6 +4,8 @@ import type { IncomeEntry } from '../api/client';
 
 export default function Income() {
   const [entries, setEntries] = useState<IncomeEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -16,17 +18,21 @@ export default function Income() {
   }, [year]);
 
   async function loadIncome() {
+    setLoading(true);
     try {
       const data = await api.getIncome(year);
       setEntries(data);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load income');
+    } finally {
+      setLoading(false);
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSubmitting(true);
     try {
       await api.addIncome({
         ...form,
@@ -41,6 +47,8 @@ export default function Income() {
       await loadIncome();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to add income entry');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -72,11 +80,11 @@ export default function Income() {
         <input type="number" step="0.01" placeholder="Post-Tax Deductions" value={form.post_tax_deductions} onChange={e => setForm({ ...form, post_tax_deductions: e.target.value })} className="border rounded px-3 py-2" required />
         <input type="number" step="0.01" placeholder="Net Pay" value={form.net_pay} onChange={e => setForm({ ...form, net_pay: e.target.value })} className="border rounded px-3 py-2" required />
         <input placeholder="Notes (optional)" value={form.information} onChange={e => setForm({ ...form, information: e.target.value })} className="border rounded px-3 py-2" />
-        <button type="submit" className="col-span-2 md:col-span-4 bg-blue-600 text-white rounded py-2 hover:bg-blue-700">Add Entry</button>
+        <button type="submit" disabled={submitting} className="col-span-2 md:col-span-4 bg-blue-600 text-white rounded py-2 hover:bg-blue-700 disabled:opacity-50">{submitting ? 'Adding...' : 'Add Entry'}</button>
       </form>
 
       <div className="bg-white rounded-lg shadow overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-3 py-2 text-left">Date</th>
@@ -89,20 +97,39 @@ export default function Income() {
               <th className="px-3 py-2 text-left">Notes</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
-            {entries.map((entry) => (
-              <tr key={entry.id}>
-                <td className="px-3 py-2">{entry.date}</td>
-                <td className="px-3 py-2">{entry.type}</td>
-                <td className="px-3 py-2 text-right">${entry.gross_pay.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">${entry.taxes.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">${entry.pre_tax_deductions.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right">${entry.post_tax_deductions.toFixed(2)}</td>
-                <td className="px-3 py-2 text-right font-medium">${entry.net_pay.toFixed(2)}</td>
-                <td className="px-3 py-2 text-gray-500">{entry.information}</td>
-              </tr>
-            ))}
-          </tbody>
+          {loading ? (
+            <tbody>
+              {[...Array(5)].map((_, i) => (
+                <tr key={i}>
+                  <td colSpan={8} className="px-3 py-2">
+                    <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ) : (
+            <tbody className="divide-y">
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="px-3 py-2">{entry.date}</td>
+                  <td className="px-3 py-2">{entry.type}</td>
+                  <td className="px-3 py-2 text-right">${entry.gross_pay.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">${entry.taxes.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">${entry.pre_tax_deductions.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right">${entry.post_tax_deductions.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right font-medium">${entry.net_pay.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-gray-500">{entry.information}</td>
+                </tr>
+              ))}
+              {entries.length === 0 && !error && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                    No income entries for this year.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          )}
         </table>
       </div>
     </div>

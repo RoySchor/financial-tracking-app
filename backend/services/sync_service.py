@@ -1,14 +1,18 @@
 import hashlib
 import logging
+import time
 from datetime import datetime, timezone
 
 from database import get_db
-from services.plaid_client import get_plaid_client, get_access_tokens, sync_transactions, backfill_transactions
+from services.plaid_client import get_plaid_client, get_access_tokens, get_accounts, sync_transactions, backfill_transactions
 from services.category_mapper import load_mappings, map_category
 from services.sheets_client import get_spreadsheet
 from services.sheets_writer import write_transaction_to_sheets
 
 logger = logging.getLogger(__name__)
+
+SHEETS_WRITES_PER_SYNC = 25
+SHEETS_WRITE_DELAY_SECONDS = 2
 
 
 def _token_key(token: str) -> str:
@@ -30,7 +34,8 @@ def run_sync() -> dict:
     synced_ids: list[str] = []
 
     with get_db() as conn:
-        for token in tokens:
+        for token, institution in tokens:
+            _sync_accounts(conn, client, token, institution)
             key = _token_key(token)
 
             cursor_row = conn.execute(
@@ -93,18 +98,55 @@ def run_sync() -> dict:
                 synced_ids,
             ).fetchall()
 
-    spreadsheet = get_spreadsheet()
-    for row in batch_rows:
-        try:
-            write_transaction_to_sheets(dict(row), spreadsheet=spreadsheet)
-        except Exception as e:
-            logger.warning(f"Sheets write failed during sync for {row['id']}: {e}")
+    is_initial_backfill = total_added > SHEETS_WRITES_PER_SYNC
+
+    if is_initial_backfill:
+        logger.info(
+            f"Initial backfill: {total_added} transactions saved to DB. "
+            f"Skipping Sheets writes — use POST /api/sheets/retry to sync gradually."
+        )
+    elif batch_rows:
+        spreadsheet = get_spreadsheet()
+        writes_done = 0
+        for row in batch_rows:
+            if writes_done >= SHEETS_WRITES_PER_SYNC:
+                logger.info(f"Sheets write cap reached ({SHEETS_WRITES_PER_SYNC}), remaining will retry later.")
+                break
+            try:
+                write_transaction_to_sheets(dict(row), spreadsheet=spreadsheet)
+                writes_done += 1
+                if writes_done < len(batch_rows):
+                    time.sleep(SHEETS_WRITE_DELAY_SECONDS)
+            except Exception as e:
+                logger.warning(f"Sheets write failed during sync for {row['id']}: {e}")
 
     return {
         "added": total_added,
         "modified": total_modified,
         "removed": total_removed,
     }
+
+
+def _sync_accounts(conn, client, access_token: str, institution: str):
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        accounts = get_accounts(client, access_token)
+    except Exception as e:
+        logger.warning(f"Failed to fetch accounts for {institution}: {type(e).__name__}")
+        return
+
+    for acct in accounts:
+        conn.execute(
+            """INSERT INTO plaid_accounts (plaid_account_id, official_name, institution, account_mask, account_type, last_synced_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(plaid_account_id) DO UPDATE SET
+                 official_name = excluded.official_name,
+                 institution = excluded.institution,
+                 account_mask = excluded.account_mask,
+                 account_type = excluded.account_type,
+                 last_synced_at = excluded.last_synced_at""",
+            (acct["account_id"], acct["official_name"], institution, acct["mask"], acct["type"], now),
+        )
 
 
 def _upsert_transaction(conn, txn, mappings: list[dict]):

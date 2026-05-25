@@ -17,7 +17,15 @@ def clean_merchant_name(raw: str) -> str:
     cleaned = re.sub(r"\s+\d{5,}$", "", raw)
     cleaned = re.sub(r"\s+[A-Z]{2}\s*$", "", cleaned)
     cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
-    return cleaned.title()
+    # Title-case each word but preserve all-caps words (acronyms like MTA, ATM)
+    words = cleaned.split()
+    result = []
+    for w in words:
+        if w.isupper() and len(w) > 1:
+            result.append(w)
+        else:
+            result.append(w.title())
+    return " ".join(result) if result else cleaned
 
 
 def map_category(raw_merchant: str | None, mappings: list[dict]) -> str:

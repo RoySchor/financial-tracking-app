@@ -3,11 +3,13 @@ import { api } from '../api/client';
 
 export default function AddExpense() {
   const [form, setForm] = useState({ date: '', type: '', amount: '' });
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setSubmitting(true);
     try {
       await api.addCashExpense({
         date: form.date,
@@ -21,6 +23,8 @@ export default function AddExpense() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to add expense');
       setMessage('');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -47,7 +51,7 @@ export default function AddExpense() {
           <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
           <input type="number" step="0.01" placeholder="0.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="border rounded px-3 py-2 w-full" required />
         </div>
-        <button type="submit" className="w-full bg-blue-600 text-white rounded py-2 hover:bg-blue-700">Add Expense</button>
+        <button type="submit" disabled={submitting} className="w-full bg-blue-600 text-white rounded py-2 hover:bg-blue-700 disabled:opacity-50">{submitting ? 'Adding...' : 'Add Expense'}</button>
         {message && <p className="text-green-600 text-sm text-center">{message}</p>}
       </form>
     </div>

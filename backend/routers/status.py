@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from database import get_db, DB_PATH
 from models import StatusOut
 from services.sheets_writer import retry_failed_writes
+from services.sheets_importer import import_income_from_sheets, import_assets_from_sheets, import_expenses_from_sheets
 
 router = APIRouter(tags=["status"])
 
@@ -45,3 +46,27 @@ def get_status():
 def retry_failed_sheets():
     result = retry_failed_writes()
     return {"message": f"Retried {result['retried']}, succeeded {result['succeeded']}"}
+
+
+@router.post("/import/income")
+def import_income():
+    result = import_income_from_sheets()
+    if "error" in result:
+        return {"error": result["error"]}
+    return result
+
+
+@router.post("/import/assets")
+def import_assets():
+    result = import_assets_from_sheets()
+    if "error" in result:
+        return {"error": result["error"]}
+    return result
+
+
+@router.post("/import/expenses")
+def import_expenses():
+    result = import_expenses_from_sheets()
+    if "error" in result:
+        return {"error": result["error"]}
+    return result

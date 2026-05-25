@@ -11,6 +11,7 @@ class TransactionOut(BaseModel):
     amount: float
     source: str
     plaid_account_id: Optional[str] = None
+    account_name: Optional[str] = None
     synced_to_sheets: bool = False
     created_at: Optional[str] = None
 
@@ -93,10 +94,30 @@ class RecurringExpenseOut(BaseModel):
     updated_at: Optional[str] = None
 
 
+class RecurringExpenseCreate(BaseModel):
+    label: str
+    full_name: str
+    amount: float
+    day_of_month: int
+
+
 class RecurringExpenseIn(BaseModel):
     amount: float
     full_name: Optional[str] = None
     day_of_month: Optional[int] = None
+
+
+class PlaidAccountOut(BaseModel):
+    plaid_account_id: str
+    official_name: Optional[str] = None
+    display_name: Optional[str] = None
+    institution: Optional[str] = None
+    account_mask: Optional[str] = None
+    account_type: Optional[str] = None
+
+
+class PlaidAccountUpdate(BaseModel):
+    display_name: str
 
 
 class StatusOut(BaseModel):

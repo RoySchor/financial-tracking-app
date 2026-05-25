@@ -92,6 +92,8 @@ make frontend  # Vite on http://localhost:5173
 | GET | `/api/transactions?month=&year=` | List transactions for a month |
 | GET | `/api/transactions/summary?month=&year=` | Category breakdown |
 | GET | `/api/transactions/yearly?year=` | Monthly totals for the year |
+| GET | `/api/transactions/range?start=&end=` | Transactions in a date range |
+| GET | `/api/transactions/range/summary?start=&end=` | Category + monthly breakdown for range |
 | POST | `/api/transactions/cash` | Add a manual cash expense |
 | GET | `/api/categories` | List category mappings |
 | PUT | `/api/categories/{id}` | Update a category mapping |
@@ -102,12 +104,49 @@ make frontend  # Vite on http://localhost:5173
 | GET | `/api/assets` | List assets |
 | POST | `/api/assets` | Add/update an asset |
 | POST | `/api/sheets/retry` | Retry failed Sheets writes |
+| POST | `/api/import/expenses` | Import expenses from Google Sheets |
+| POST | `/api/import/income` | Import income from Google Sheets |
+| POST | `/api/import/assets` | Import assets from Google Sheets |
+
+## Initial Data Import (New Machine Setup)
+
+After cloning, setting up `.env`, and running `make setup && make dev`, use these commands to populate the database from your existing Google Sheets data and Plaid:
+
+```bash
+# 1. Sync transactions from Plaid (gets ~90 days of history)
+curl -X POST http://127.0.0.1:8000/api/sync
+
+# 2. Import historical expenses from all "Expenses <Month> <Year>" sheets
+#    Pulls Date/Type/Amount from each sheet's table. Idempotent — safe to re-run.
+curl -X POST http://127.0.0.1:8000/api/import/expenses
+
+# 3. Import income from all "<Year> Income Breakdown" sheets
+#    Reads Date, Type, Gross Pay, Taxes, Deductions, Net Pay, Information.
+curl -X POST http://127.0.0.1:8000/api/import/income
+
+# 4. Import assets from the "Rough Asset Portfolio" sheet
+#    Reads Bank/Group, Account Name, Current Amount, Dividends, APY, Interest, Fee, Notes.
+curl -X POST http://127.0.0.1:8000/api/import/assets
+
+# 5. Load category mappings (merchant → category rules)
+make seed-categories
+
+# 6. Retry any failed Sheets writes (pushes unsynced DB rows to Sheets)
+#    Rate-limited to 20 writes per call with backoff. Run multiple times if needed.
+curl -X POST http://127.0.0.1:8000/api/sheets/retry
+```
+
+All import endpoints are idempotent — they skip rows that already exist in the DB. Imported data is marked `synced_to_sheets = 1` since it came from Sheets in the first place.
+
+Note: Plaid only provides ~90 days of transaction history from most institutions. The expenses import fills in everything older from  my manual Sheets entries.
 
 ## Google Sheets Integration
 
 When configured, the app dual-writes to Google Sheets:
 
-> This is hardcoded to my own Google Sheets Template design
+- **Expenses** → "Expenses {Month} {Year}" sheets (one per month, auto-created from template)
+- **Income** → "{Year} Income Breakdown" sheets
+- **Assets** → "Rough Asset Portfolio" sheet (upserts by bank + account name)
 
 ## Security Notes
 

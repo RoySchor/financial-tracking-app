@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 
 from database import get_db
@@ -9,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 BACKOFF_MINUTES = [1, 5, 30, 120]
 MAX_RETRIES = 5
+MAX_RETRY_BATCH = 20
+RETRY_DELAY_SECONDS = 3
 VALID_TABLES = {"transactions", "income", "assets"}
 
 
@@ -18,11 +21,20 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
     if spreadsheet is None:
         return False
 
+    with get_db() as conn:
+        current = conn.execute(
+            "SELECT synced_to_sheets FROM transactions WHERE id = ?",
+            (transaction["id"],),
+        ).fetchone()
+        if current and current["synced_to_sheets"] == 1:
+            return True
+
     try:
         date_str = transaction["date"]
         parts = date_str.split("-")
-        month = int(parts[1])
         year = int(parts[0])
+        month = int(parts[1])
+        day = int(parts[2])
 
         if not ensure_month_sheet_exists(month, year, spreadsheet=spreadsheet):
             _mark_retry_failed(transaction["id"], "transactions")
@@ -32,14 +44,20 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
         sheet_title = f"Expenses {month_name} {year}"
         worksheet = spreadsheet.worksheet(sheet_title)
 
+        formatted_date = f"{month}/{day}/{year}"
         row = [
-            transaction["date"],
+            formatted_date,
             transaction["type"],
             transaction["amount"],
-            transaction.get("raw_merchant", ""),
-            transaction.get("source", ""),
         ]
-        worksheet.append_row(row, value_input_option="USER_ENTERED")
+
+        col_a = worksheet.col_values(1)
+        next_row = len(col_a) + 1
+        for i in range(len(col_a) - 1, -1, -1):
+            if col_a[i].strip():
+                next_row = i + 2
+                break
+        worksheet.update(f"A{next_row}:C{next_row}", [row], value_input_option="USER_ENTERED")
 
         with get_db() as conn:
             conn.execute(
@@ -55,13 +73,27 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
         return False
 
 
-def write_income_to_sheets(income: dict) -> bool:
-    spreadsheet = get_spreadsheet()
+def write_income_to_sheets(income: dict, spreadsheet=None) -> bool:
+    if spreadsheet is None:
+        spreadsheet = get_spreadsheet()
     if spreadsheet is None:
         return False
 
+    with get_db() as conn:
+        current = conn.execute(
+            "SELECT synced_to_sheets FROM income WHERE id = ?",
+            (income["id"],),
+        ).fetchone()
+        if current and current["synced_to_sheets"] == 1:
+            return True
+
     try:
-        year = int(income["date"].split("-")[0])
+        date_str = income["date"]
+        parts = date_str.split("-")
+        year = int(parts[0])
+        month = int(parts[1])
+        day = int(parts[2])
+
         sheet_title = f"{year} Income Breakdown"
 
         existing = [ws.title for ws in spreadsheet.worksheets()]
@@ -70,17 +102,26 @@ def write_income_to_sheets(income: dict) -> bool:
 
         worksheet = spreadsheet.worksheet(sheet_title)
 
+        formatted_date = f"{month}/{day}/{year}"
         row = [
-            income["date"],
+            formatted_date,
             income["type"],
             income["gross_pay"],
             income["taxes"],
             income["pre_tax_deductions"],
             income["post_tax_deductions"],
             income["net_pay"],
+            "",
             income.get("information") or "",
         ]
-        worksheet.append_row(row, value_input_option="USER_ENTERED")
+
+        col_a = worksheet.col_values(1)
+        next_row = len(col_a) + 1
+        for i in range(len(col_a) - 1, -1, -1):
+            if col_a[i].strip():
+                next_row = i + 2
+                break
+        worksheet.update(f"A{next_row}:I{next_row}", [row], value_input_option="USER_ENTERED")
 
         with get_db() as conn:
             conn.execute(
@@ -96,22 +137,29 @@ def write_income_to_sheets(income: dict) -> bool:
         return False
 
 
-def write_asset_to_sheets(asset: dict) -> bool:
-    spreadsheet = get_spreadsheet()
+def write_asset_to_sheets(asset: dict, spreadsheet=None) -> bool:
+    if spreadsheet is None:
+        spreadsheet = get_spreadsheet()
     if spreadsheet is None:
         return False
 
+    with get_db() as conn:
+        current = conn.execute(
+            "SELECT synced_to_sheets FROM assets WHERE id = ?",
+            (asset["id"],),
+        ).fetchone()
+        if current and current["synced_to_sheets"] == 1:
+            return True
+
     try:
-        sheet_title = "Asset Portfolio"
+        sheet_title = "Rough Asset Portfolio"
 
         existing = [ws.title for ws in spreadsheet.worksheets()]
         if sheet_title not in existing:
             worksheet = spreadsheet.add_worksheet(title=sheet_title, rows=100, cols=10)
-            worksheet.append_row(
-                ["Bank/Group", "Account Name", "Current Amount", "Total Dividends",
-                 "APY", "Total Interest", "Fee", "Notes", "Last Updated"],
-                value_input_option="USER_ENTERED",
-            )
+            worksheet.update("A3:H3", [["Bank / Holding Group", "Account Name", "Current Amount",
+                            "Total Dividends Received", "APY", "Total Interest Earned",
+                            "Fee", "Notes"]], value_input_option="USER_ENTERED")
         else:
             worksheet = spreadsheet.worksheet(sheet_title)
 
@@ -124,21 +172,26 @@ def write_asset_to_sheets(asset: dict) -> bool:
             asset["total_interest"],
             asset["fee"],
             asset.get("notes") or "",
-            asset["last_updated"],
         ]
 
         # Upsert: find existing row by bank_group + account_name
         all_values = worksheet.get_all_values()
         updated = False
-        for row_idx, row in enumerate(all_values[1:], start=2):  # skip header
+        for row_idx, row in enumerate(all_values, start=1):
             if len(row) >= 2 and row[0] == asset["bank_group"] and row[1] == asset["account_name"]:
-                cell_range = f"A{row_idx}:I{row_idx}"
+                cell_range = f"A{row_idx}:H{row_idx}"
                 worksheet.update(cell_range, [new_row], value_input_option="USER_ENTERED")
                 updated = True
                 break
 
         if not updated:
-            worksheet.append_row(new_row, value_input_option="USER_ENTERED")
+            col_a = worksheet.col_values(1)
+            next_row = len(col_a) + 1
+            for i in range(len(col_a) - 1, -1, -1):
+                if col_a[i].strip():
+                    next_row = i + 2
+                    break
+            worksheet.update(f"A{next_row}:H{next_row}", [new_row], value_input_option="USER_ENTERED")
 
         with get_db() as conn:
             conn.execute(
@@ -158,52 +211,69 @@ def retry_failed_writes() -> dict:
     now = datetime.now(timezone.utc)
     retried = 0
     succeeded = 0
+    total_writes = 0
+
+    spreadsheet = get_spreadsheet()
+    if spreadsheet is None:
+        return {"retried": 0, "succeeded": 0, "error": "Sheets not configured"}
 
     with get_db() as conn:
-        # Retry transactions
         failed_txns = conn.execute(
             """SELECT * FROM transactions
-               WHERE synced_to_sheets = 0 AND sheets_retry_count < ?""",
+               WHERE synced_to_sheets = 0 AND sheets_retry_count < ?
+               ORDER BY date ASC""",
             (MAX_RETRIES,),
         ).fetchall()
 
         for row in failed_txns:
+            if total_writes >= MAX_RETRY_BATCH:
+                break
             txn = dict(row)
             if not _should_retry(txn, now):
                 continue
             retried += 1
-            if write_transaction_to_sheets(txn):
+            if write_transaction_to_sheets(txn, spreadsheet=spreadsheet):
                 succeeded += 1
+            total_writes += 1
+            time.sleep(RETRY_DELAY_SECONDS)
 
-        # Retry income
-        failed_income = conn.execute(
-            """SELECT * FROM income
-               WHERE synced_to_sheets = 0 AND sheets_retry_count < ?""",
-            (MAX_RETRIES,),
-        ).fetchall()
+        if total_writes < MAX_RETRY_BATCH:
+            failed_income = conn.execute(
+                """SELECT * FROM income
+                   WHERE synced_to_sheets = 0 AND sheets_retry_count < ?""",
+                (MAX_RETRIES,),
+            ).fetchall()
 
-        for row in failed_income:
-            entry = dict(row)
-            if not _should_retry(entry, now):
-                continue
-            retried += 1
-            if write_income_to_sheets(entry):
-                succeeded += 1
+            for row in failed_income:
+                if total_writes >= MAX_RETRY_BATCH:
+                    break
+                entry = dict(row)
+                if not _should_retry(entry, now):
+                    continue
+                retried += 1
+                if write_income_to_sheets(entry, spreadsheet=spreadsheet):
+                    succeeded += 1
+                total_writes += 1
+                time.sleep(RETRY_DELAY_SECONDS)
 
-        # Retry assets
-        failed_assets = conn.execute(
-            """SELECT * FROM assets
-               WHERE synced_to_sheets = 0 AND sheets_retry_count < ?""",
-            (MAX_RETRIES,),
-        ).fetchall()
+        if total_writes < MAX_RETRY_BATCH:
+            failed_assets = conn.execute(
+                """SELECT * FROM assets
+                   WHERE synced_to_sheets = 0 AND sheets_retry_count < ?""",
+                (MAX_RETRIES,),
+            ).fetchall()
 
-        for row in failed_assets:
-            asset = dict(row)
-            if not _should_retry(asset, now):
-                continue
-            retried += 1
-            if write_asset_to_sheets(asset):
-                succeeded += 1
+            for row in failed_assets:
+                if total_writes >= MAX_RETRY_BATCH:
+                    break
+                asset = dict(row)
+                if not _should_retry(asset, now):
+                    continue
+                retried += 1
+                if write_asset_to_sheets(asset, spreadsheet=spreadsheet):
+                    succeeded += 1
+                total_writes += 1
+                time.sleep(RETRY_DELAY_SECONDS)
 
     return {"retried": retried, "succeeded": succeeded}
 

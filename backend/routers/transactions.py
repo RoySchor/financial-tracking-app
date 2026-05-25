@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Query
+import re
+
+from fastapi import APIRouter, HTTPException, Query
 import uuid
 
 from database import get_db
@@ -7,14 +9,23 @@ from services.sheets_writer import write_transaction_to_sheets
 
 router = APIRouter(tags=["transactions"])
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_date(val: str, name: str):
+    if not _DATE_RE.match(val):
+        raise HTTPException(status_code=400, detail=f"{name} must be YYYY-MM-DD format")
+
 
 @router.get("/transactions", response_model=list[TransactionOut])
 def list_transactions(month: int = Query(...), year: int = Query(...)):
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT * FROM transactions
-               WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?
-               ORDER BY date DESC""",
+            """SELECT t.*, COALESCE(pa.display_name, pa.official_name) as account_name
+               FROM transactions t
+               LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
+               WHERE strftime('%m', t.date) = ? AND strftime('%Y', t.date) = ?
+               ORDER BY t.date DESC""",
             (f"{month:02d}", str(year)),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -53,6 +64,54 @@ def transaction_summary(month: int = Query(...), year: int = Query(...)):
     }
 
 
+@router.get("/transactions/range")
+def transactions_by_range(start: str = Query(...), end: str = Query(...)):
+    _validate_date(start, "start")
+    _validate_date(end, "end")
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT t.*, COALESCE(pa.display_name, pa.official_name) as account_name
+               FROM transactions t
+               LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
+               WHERE t.date >= ? AND t.date <= ?
+               ORDER BY t.date DESC""",
+            (start, end),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.get("/transactions/range/summary")
+def range_summary(start: str = Query(...), end: str = Query(...)):
+    _validate_date(start, "start")
+    _validate_date(end, "end")
+    with get_db() as conn:
+        total = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) as total FROM transactions
+               WHERE date >= ? AND date <= ?""",
+            (start, end),
+        ).fetchone()["total"]
+
+        by_category = conn.execute(
+            """SELECT type, SUM(amount) as total, COUNT(*) as count FROM transactions
+               WHERE date >= ? AND date <= ?
+               GROUP BY type ORDER BY total DESC""",
+            (start, end),
+        ).fetchall()
+
+        by_month = conn.execute(
+            """SELECT strftime('%Y-%m', date) as month, SUM(amount) as total
+               FROM transactions WHERE date >= ? AND date <= ?
+               GROUP BY month ORDER BY month""",
+            (start, end),
+        ).fetchall()
+
+    return {
+        "total": total,
+        "by_category": [dict(r) for r in by_category],
+        "by_month": [dict(r) for r in by_month],
+    }
+
+
 @router.get("/transactions/yearly")
 def yearly_totals(year: int = Query(...)):
     with get_db() as conn:
@@ -75,7 +134,13 @@ def add_cash_expense(expense: CashExpenseIn):
             (txn_id, expense.date.isoformat(), expense.type, expense.amount),
         )
         conn.commit()
-        row = conn.execute("SELECT * FROM transactions WHERE id = ?", (txn_id,)).fetchone()
+        row = conn.execute(
+            """SELECT t.*, COALESCE(pa.display_name, pa.official_name) as account_name
+               FROM transactions t
+               LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
+               WHERE t.id = ?""",
+            (txn_id,),
+        ).fetchone()
     result = dict(row)
     write_transaction_to_sheets(result)
     return result
