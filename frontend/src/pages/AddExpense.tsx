@@ -14,14 +14,14 @@ function parseExpenses(text: string): { parsed: ParsedExpense[]; errors: string[
   const errors: string[] = [];
 
   for (const line of lines) {
-    // Date is always at the end: M.D.YY or M.D.YYYY
-    const dateMatch = line.match(/^(.+?)\s+(\d{1,2}\.\d{1,2}\.\d{2,4})$/);
+    // Date is always at the end: M.D.YY, M/D/YY, M.D.YYYY, M/D/YYYY
+    const dateMatch = line.match(/^(.+?)\s+(\d{1,2}[./]\d{1,2}[./]\d{2,4})$/);
     if (!dateMatch) {
       errors.push(line);
       continue;
     }
     const [, body, dateStr] = dateMatch;
-    const [m, d, y] = dateStr.split('.');
+    const [m, d, y] = dateStr.split(/[./]/);
     const fullYear = y.length === 2 ? `20${y}` : y;
     const date = `${fullYear}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 
