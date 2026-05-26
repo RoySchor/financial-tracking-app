@@ -1,8 +1,10 @@
-# My Finances
+# Finance Guru
 
-I used to have a Google Sheet that I manually updated to track my financial spending, savings, and tax situation. Needless to say it was quite manual.
+I originally tracked my entire financial life in a Google Sheet — expenses, investments, savings, taxes — updating everything manually.
 
-I made this to automate that tracking. It syncs credit card transactions and investment holdings via Plaid, stores them locally in SQLite, serves a React dashboard, and dual-writes expenses/income/assets to an existing Finance tracking Google Sheets.
+This app automates the entire workflow.
+
+It connects to banks and brokerages through Plaid, ingests transactions and holdings into a local SQLite database, powers a real-time React dashboard, and syncs structured financial data back into Google Sheets so the system stays transparent, portable, and fully under my control.
 
 ## Architecture
 
