@@ -5,6 +5,7 @@ from database import get_db, DB_PATH
 from models import StatusOut
 from services.sheets_writer import retry_failed_writes
 from services.sheets_importer import import_income_from_sheets, import_assets_from_sheets, import_expenses_from_sheets
+from dedup_transactions import run_dedup
 
 router = APIRouter(tags=["status"])
 
@@ -69,4 +70,6 @@ def import_expenses():
     result = import_expenses_from_sheets()
     if "error" in result:
         return {"error": result["error"]}
+    dedup_result = run_dedup()
+    result["duplicates_removed"] = dedup_result["deleted"]
     return result

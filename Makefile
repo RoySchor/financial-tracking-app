@@ -1,6 +1,6 @@
 PYTHON = .venv/bin/python
 
-.PHONY: dev backend frontend sync seed-categories seed-assets db-reset db-migrate setup mark-synced
+.PHONY: dev backend frontend sync seed-categories seed-assets db-reset db-migrate setup mark-synced dedup
 
 setup:
 	python3 -m venv .venv
@@ -45,3 +45,9 @@ mark-synced:
 		UPDATE income SET synced_to_sheets = 1, sheets_retry_count = 0; \
 		UPDATE assets SET synced_to_sheets = 1, sheets_retry_count = 0;"
 	@echo "Done. All rows marked as synced — no Sheets writes will be attempted for existing data."
+
+dedup:
+	@cd backend && ../$(PYTHON) dedup_transactions.py
+
+dedup-dry:
+	@cd backend && ../$(PYTHON) dedup_transactions.py --dry-run
