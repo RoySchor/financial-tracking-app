@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis } from 'recharts';
 import { api } from '../api/client';
-import type { InvestmentSummary, PortfolioSnapshot, PortfolioAccount } from '../api/client';
+import type { InvestmentSummary, PortfolioSnapshot, PortfolioAccount, PerformersResponse } from '../api/client';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
 export default function Portfolio() {
   const [summary, setSummary] = useState<InvestmentSummary | null>(null);
   const [history, setHistory] = useState<PortfolioSnapshot[]>([]);
+  const [performers, setPerformers] = useState<PerformersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,12 +18,14 @@ export default function Portfolio() {
   async function loadData() {
     setLoading(true);
     try {
-      const [s, h] = await Promise.all([
+      const [s, h, p] = await Promise.all([
         api.getInvestmentSummary(),
         api.getPortfolioHistory(12),
+        api.getPerformers(5),
       ]);
       setSummary(s);
       setHistory(h);
+      setPerformers(p);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load portfolio data');
@@ -135,6 +138,65 @@ export default function Portfolio() {
                   </Link>
                 ))}
               </div>
+            </div>
+          )}
+
+          {performers && (performers.top.length > 0 || performers.bottom.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {performers.top.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Top Performers</h2>
+                  <div className="space-y-3">
+                    {performers.top.map((p, i) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <div>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            {p.ticker || p.security_name}
+                          </span>
+                          {p.ticker && p.security_name && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{p.security_name}</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className="font-semibold text-green-600 dark:text-green-400">
+                            +{p.gain_loss_pct.toFixed(1)}%
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                            +${p.gain_loss_dollar.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {performers.bottom.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Bottom Performers</h2>
+                  <div className="space-y-3">
+                    {performers.bottom.map((p, i) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <div>
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            {p.ticker || p.security_name}
+                          </span>
+                          {p.ticker && p.security_name && (
+                            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{p.security_name}</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className={`font-semibold ${p.gain_loss_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {p.gain_loss_pct >= 0 ? '+' : ''}{p.gain_loss_pct.toFixed(1)}%
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                            {p.gain_loss_dollar >= 0 ? '+' : ''}${p.gain_loss_dollar.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

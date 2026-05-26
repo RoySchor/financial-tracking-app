@@ -133,6 +133,44 @@ def investment_summary():
     }
 
 
+@router.get("/investments/performers")
+def top_bottom_performers(limit: int = Query(5)):
+    if limit < 1 or limit > 20:
+        limit = 5
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT s.ticker, s.name as security_name, s.type as security_type,
+                      h.cost_basis, h.institution_value, h.quantity,
+                      COALESCE(pa.display_name, pa.official_name) as account_name,
+                      pa.institution,
+                      (h.institution_value - h.cost_basis) / h.cost_basis as gain_pct
+               FROM holdings h
+               JOIN securities s ON h.security_id = s.security_id
+               LEFT JOIN plaid_accounts pa ON h.plaid_account_id = pa.plaid_account_id
+               WHERE h.cost_basis IS NOT NULL AND h.cost_basis > 0
+               ORDER BY gain_pct DESC""",
+        ).fetchall()
+
+    all_performers = []
+    for r in rows:
+        all_performers.append({
+            "ticker": r["ticker"],
+            "security_name": r["security_name"],
+            "security_type": r["security_type"],
+            "cost_basis": r["cost_basis"],
+            "current_value": r["institution_value"],
+            "gain_loss_pct": round(r["gain_pct"] * 100, 2),
+            "gain_loss_dollar": round(r["institution_value"] - r["cost_basis"], 2),
+            "account_name": r["account_name"],
+            "institution": r["institution"],
+        })
+
+    return {
+        "top": all_performers[:limit],
+        "bottom": list(reversed(all_performers[-limit:])) if len(all_performers) >= limit else list(reversed(all_performers)),
+    }
+
+
 @router.get("/investments/history")
 def portfolio_history(months: int = Query(12)):
     with get_db() as conn:

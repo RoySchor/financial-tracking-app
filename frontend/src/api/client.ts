@@ -178,6 +178,23 @@ export interface InvestmentTransaction {
   account_name: string | null;
 }
 
+export interface Performer {
+  ticker: string | null;
+  security_name: string | null;
+  security_type: string | null;
+  cost_basis: number;
+  current_value: number;
+  gain_loss_pct: number;
+  gain_loss_dollar: number;
+  account_name: string | null;
+  institution: string | null;
+}
+
+export interface PerformersResponse {
+  top: Performer[];
+  bottom: Performer[];
+}
+
 export const api = {
   getTransactions: (month: number, year: number) =>
     request<Transaction[]>(`/transactions?month=${month}&year=${year}`),
@@ -236,6 +253,8 @@ export const api = {
 
   retrySheets: () => request<{ message: string }>('/sheets/retry', { method: 'POST' }),
 
+  getPerformers: (limit: number = 5) =>
+    request<PerformersResponse>(`/investments/performers?limit=${limit}`),
   getInvestmentHoldings: (accountId?: string) =>
     request<Holding[]>(accountId ? `/investments/holdings?account_id=${accountId}` : '/investments/holdings'),
   getInvestmentSummary: () =>

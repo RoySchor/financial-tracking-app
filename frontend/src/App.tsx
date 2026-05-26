@@ -18,11 +18,11 @@ const navItems = [
   { to: '/month', label: 'Month' },
   { to: '/trends', label: 'Trends' },
   { to: '/income', label: 'Income' },
-  { to: '/assets', label: 'Assets' },
+  { to: '/assets', label: 'Non-Synced' },
   { to: '/portfolio', label: 'Portfolio' },
   { to: '/categories', label: 'Categories' },
   { to: '/recurring', label: 'Recurring' },
-  { to: '/add', label: 'Add Expense' },
+  { to: '/add', label: 'Add Cash Expense' },
 ];
 
 function useDarkMode() {

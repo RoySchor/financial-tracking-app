@@ -16,6 +16,7 @@ SHEETS_WRITE_DELAY_SECONDS = 2
 
 _SKIP_PFC = {"TRANSFER_IN", "TRANSFER_OUT", "INCOME"}
 _SKIP_PFC_DETAILED = {"LOAN_PAYMENTS_CREDIT_CARD_PAYMENT"}
+_SKIP_MERCHANT_PATTERNS = ("payment thank you", "autopay", "automatic payment")
 
 
 def _should_skip(txn) -> bool:
@@ -27,6 +28,9 @@ def _should_skip(txn) -> bool:
         detailed = getattr(pfc, "detailed", None) or (pfc.get("detailed") if isinstance(pfc, dict) else None)
         if detailed and detailed in _SKIP_PFC_DETAILED:
             return True
+    merchant = (txn.merchant_name or txn.name or "").lower()
+    if any(p in merchant for p in _SKIP_MERCHANT_PATTERNS):
+        return True
     return False
 
 

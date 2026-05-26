@@ -144,7 +144,7 @@ export default function ManualAccountDetail() {
 
       <p className="text-sm text-gray-400 dark:text-gray-500">
         Need to edit dividends, APY, or other fields?{' '}
-        <Link to="/assets" className="text-blue-600 dark:text-blue-400 hover:underline">Edit on Assets page</Link>
+        <Link to="/assets" className="text-blue-600 dark:text-blue-400 hover:underline">Edit on Non-Synced Accounts page</Link>
       </p>
     </div>
   );
