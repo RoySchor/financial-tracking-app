@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 import uuid
 
 from database import get_db
-from models import TransactionOut, CashExpenseIn
+from models import TransactionOut, CashExpenseIn, TransactionRename
 from services.sheets_writer import write_transaction_to_sheets
 
 router = APIRouter(tags=["transactions"])
@@ -77,6 +77,15 @@ def _group_transactions(rows: list[dict]) -> list[dict]:
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+_TXN_SELECT = """
+    SELECT t.*, COALESCE(pa.display_name, pa.official_name) AS account_name,
+           tt.trip_id AS trip_id, tr.name AS trip_name
+    FROM transactions t
+    LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
+    LEFT JOIN trip_transactions tt ON tt.transaction_id = t.id
+    LEFT JOIN trips tr ON tr.id = tt.trip_id
+"""
+
 
 def _validate_date(val: str, name: str):
     if not _DATE_RE.match(val):
@@ -87,11 +96,9 @@ def _validate_date(val: str, name: str):
 def list_transactions(month: int = Query(...), year: int = Query(...)):
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT t.*, COALESCE(pa.display_name, pa.official_name) as account_name
-               FROM transactions t
-               LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
-               WHERE strftime('%m', t.date) = ? AND strftime('%Y', t.date) = ?
-               ORDER BY t.date DESC""",
+            f"""{_TXN_SELECT}
+                WHERE strftime('%m', t.date) = ? AND strftime('%Y', t.date) = ?
+                ORDER BY t.date DESC""",
             (f"{month:02d}", str(year)),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -152,11 +159,9 @@ def transactions_by_range(start: str = Query(...), end: str = Query(...)):
     _validate_date(end, "end")
     with get_db() as conn:
         rows = conn.execute(
-            """SELECT t.*, COALESCE(pa.display_name, pa.official_name) as account_name
-               FROM transactions t
-               LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
-               WHERE t.date >= ? AND t.date <= ?
-               ORDER BY t.date DESC""",
+            f"""{_TXN_SELECT}
+                WHERE t.date >= ? AND t.date <= ?
+                ORDER BY t.date DESC""",
             (start, end),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -241,13 +246,35 @@ def add_cash_expense(expense: CashExpenseIn):
             (txn_id, expense.date.isoformat(), expense.type, expense.amount),
         )
         conn.commit()
-        row = conn.execute(
-            """SELECT t.*, COALESCE(pa.display_name, pa.official_name) as account_name
-               FROM transactions t
-               LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
-               WHERE t.id = ?""",
-            (txn_id,),
-        ).fetchone()
+        row = conn.execute(f"{_TXN_SELECT} WHERE t.id = ?", (txn_id,)).fetchone()
     result = dict(row)
     write_transaction_to_sheets(result)
     return result
+
+
+@router.patch("/transactions/{transaction_id}", response_model=TransactionOut)
+def rename_transaction(transaction_id: str, payload: TransactionRename):
+    """Rename a transaction's display type.
+
+    Deliberately does NOT reset synced_to_sheets: the row is already in the sheet,
+    and clearing the flag would make the retry job append a duplicate rather than
+    edit the existing row. The sheet is updated by hand — the UI says so.
+    """
+    new_type = payload.type.strip()
+    if not new_type:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    with get_db() as conn:
+        existing = conn.execute(
+            "SELECT id FROM transactions WHERE id = ?", (transaction_id,)
+        ).fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+
+        conn.execute(
+            "UPDATE transactions SET type = ? WHERE id = ?", (new_type, transaction_id)
+        )
+        conn.commit()
+
+        row = conn.execute(f"{_TXN_SELECT} WHERE t.id = ?", (transaction_id,)).fetchone()
+    return dict(row)

@@ -14,12 +14,58 @@ class TransactionOut(BaseModel):
     account_name: Optional[str] = None
     synced_to_sheets: bool = False
     created_at: Optional[str] = None
+    trip_id: Optional[int] = None
+    trip_name: Optional[str] = None
 
 
 class CashExpenseIn(BaseModel):
     date: date
     type: str
     amount: float
+
+
+class TransactionRename(BaseModel):
+    type: str
+
+
+class TripTransactionOut(TransactionOut):
+    pass
+
+
+class TripOut(BaseModel):
+    id: int
+    name: str
+    sheet_month: int
+    sheet_year: int
+    notes: Optional[str] = None
+    total: float = 0
+    transaction_count: int = 0
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    synced_to_sheets: bool = False
+
+
+class TripDetailOut(TripOut):
+    transactions: list[TripTransactionOut] = []
+
+
+class TripCreate(BaseModel):
+    name: str
+    sheet_month: int
+    sheet_year: int
+    notes: Optional[str] = None
+    transaction_ids: list[str] = []
+
+
+class TripUpdate(BaseModel):
+    name: Optional[str] = None
+    sheet_month: Optional[int] = None
+    sheet_year: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TripTransactionsIn(BaseModel):
+    transaction_ids: list[str]
 
 
 class CategoryMappingOut(BaseModel):

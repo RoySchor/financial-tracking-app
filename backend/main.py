@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from database import run_migrations
-from routers import transactions, sync, categories, recurring, income, assets, accounts, status, investments
+from routers import transactions, sync, categories, recurring, income, assets, accounts, status, investments, trips
 
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.include_router(assets.router, prefix="/api")
 app.include_router(accounts.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(investments.router, prefix="/api")
+app.include_router(trips.router, prefix="/api")
 
 
 @app.get("/api/health")

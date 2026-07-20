@@ -45,6 +45,10 @@ make db-reset         # Drop and recreate DB (destructive)
 
 **Falsy-safe checks**: Use `x if x is not None else default` not `x or default` — fields like `day_of_month=0` or `amount=0.0` are valid falsy values.
 
+**Trips**: A trip groups transactions that may span multiple months. `trip_transactions.transaction_id` is the primary key, so a transaction belongs to at most one trip and totals can't double-count. Each trip carries `sheet_month`/`sheet_year` deciding which monthly tab receives its total, since a trip can span months but a tab covers one. The Sheets trip block (column E name / column F total, from `TRIP_BLOCK_START_ROW`) is rewritten wholesale on every change rather than tracking a cell per trip — positional addresses drift the moment a row is inserted by hand.
+
+**Renaming a transaction does not re-sync Sheets**: `PATCH /transactions/{id}` deliberately leaves `synced_to_sheets` alone. Clearing it would make the retry job append a duplicate row instead of editing the existing one, so the sheet is corrected by hand and the UI says so.
+
 **Investment sync**: Holdings are snapshot-based (DELETE + INSERT per account per sync). Investment transactions use INSERT OR IGNORE with Plaid's transaction ID as PK for natural deduplication. Plaid API calls must happen OUTSIDE `with get_db()` blocks to avoid holding SQLite open during HTTP calls.
 
 **Token safety in logging**: Never use `logger.exception()` or log `str(e)` for Plaid-related exceptions — `ApiException.body` can contain access tokens. Always log only `type(e).__name__`.

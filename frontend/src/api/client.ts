@@ -24,6 +24,25 @@ export interface Transaction {
   account_name: string | null;
   synced_to_sheets: boolean;
   created_at: string | null;
+  trip_id: number | null;
+  trip_name: string | null;
+}
+
+export interface Trip {
+  id: number;
+  name: string;
+  sheet_month: number;
+  sheet_year: number;
+  notes: string | null;
+  total: number;
+  transaction_count: number;
+  start_date: string | null;
+  end_date: string | null;
+  synced_to_sheets: boolean;
+}
+
+export interface TripDetail extends Trip {
+  transactions: Transaction[];
 }
 
 export interface PlaidAccount {
@@ -214,6 +233,22 @@ export const api = {
     request<Transaction>('/transactions/cash', { method: 'POST', body: JSON.stringify(data) }),
   deleteTransaction: (id: string) =>
     request<{ deleted: boolean }>(`/transactions/${id}`, { method: 'DELETE' }),
+  renameTransaction: (id: string, type: string) =>
+    request<Transaction>(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify({ type }) }),
+
+  getTrips: (month?: number, year?: number) =>
+    request<Trip[]>(month && year ? `/trips?month=${month}&year=${year}` : '/trips'),
+  getTrip: (id: number) => request<TripDetail>(`/trips/${id}`),
+  createTrip: (data: { name: string; sheet_month: number; sheet_year: number; notes?: string | null; transaction_ids: string[] }) =>
+    request<TripDetail>('/trips', { method: 'POST', body: JSON.stringify(data) }),
+  updateTrip: (id: number, data: { name?: string; sheet_month?: number; sheet_year?: number; notes?: string | null }) =>
+    request<TripDetail>(`/trips/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTrip: (id: number) =>
+    request<{ deleted: boolean }>(`/trips/${id}`, { method: 'DELETE' }),
+  addTripTransactions: (id: number, transactionIds: string[]) =>
+    request<TripDetail>(`/trips/${id}/transactions`, { method: 'POST', body: JSON.stringify({ transaction_ids: transactionIds }) }),
+  removeTripTransaction: (tripId: number, transactionId: string) =>
+    request<TripDetail>(`/trips/${tripId}/transactions/${transactionId}`, { method: 'DELETE' }),
 
   triggerSync: () => request<SyncResult>('/sync', { method: 'POST' }),
   getStatus: () => request<AppStatus>('/status'),

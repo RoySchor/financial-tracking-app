@@ -1,35 +1,49 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { Transaction, GroupedCategory } from '../api/client';
+import type { Transaction, GroupedCategory, Trip } from '../api/client';
+import TripsPanel from '../components/TripsPanel';
+import TripDrawer from '../components/TripDrawer';
 
 type SortField = 'date' | 'type' | 'amount';
 type SortDir = 'asc' | 'desc';
 
+const SHEET_REMINDER = 'Renamed in the app only — update the Google Sheet manually to match.';
+
 export default function MonthView() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [grouped, setGrouped] = useState<GroupedCategory[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [openTripId, setOpenTripId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
 
   useEffect(() => {
     loadTransactions();
+    // Selection is per-month; carrying ids across months would be confusing.
+    setSelectedIds([]);
   }, [month, year]);
 
   async function loadTransactions() {
     setLoading(true);
     try {
-      const [data, groups] = await Promise.all([
+      const [data, groups, tripList] = await Promise.all([
         api.getTransactions(month, year),
         api.getGroupedTotals(month, year),
+        api.getTrips(month, year),
       ]);
       setTransactions(data);
       setGrouped(groups);
+      setTrips(tripList);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load transactions');
@@ -52,6 +66,40 @@ export default function MonthView() {
     }
   }
 
+  function startEditing(t: Transaction) {
+    setEditingId(t.id);
+    setNameDraft(t.type);
+  }
+
+  async function commitRename(id: string) {
+    const trimmed = nameDraft.trim();
+    const original = transactions.find((t) => t.id === id);
+    setEditingId(null);
+    if (!trimmed || !original || trimmed === original.type) return;
+
+    setSubmitting(true);
+    try {
+      const updated = await api.renameTransaction(id, trimmed);
+      setTransactions((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      setNotice(SHEET_REMINDER);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to rename transaction');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => (prev.length === transactions.length ? [] : transactions.map((t) => t.id)));
+  }
+
   function toggleSort(field: SortField) {
     if (sortField === field) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -70,6 +118,7 @@ export default function MonthView() {
   });
 
   const total = transactions.reduce((sum, t) => sum + t.amount, 0);
+  const allSelected = transactions.length > 0 && selectedIds.length === transactions.length;
 
   return (
     <div className="space-y-6">
@@ -103,6 +152,13 @@ export default function MonthView() {
         </div>
       )}
 
+      {notice && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 px-4 py-3 rounded-lg flex justify-between items-center">
+          <span className="text-sm">{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-sm underline ml-4">Dismiss</button>
+        </div>
+      )}
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         {loading ? (
           <div className="h-6 w-40 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
@@ -112,6 +168,17 @@ export default function MonthView() {
           </p>
         )}
       </div>
+
+      <TripsPanel
+        trips={trips}
+        loading={loading}
+        month={month}
+        year={year}
+        selectedIds={selectedIds}
+        onClearSelection={() => setSelectedIds([])}
+        onChanged={loadTransactions}
+        onOpenTrip={setOpenTripId}
+      />
 
       {!loading && grouped.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -149,6 +216,16 @@ export default function MonthView() {
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
+              <th className="px-4 py-3 w-10">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  disabled={loading || transactions.length === 0}
+                  aria-label="Select all transactions"
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+              </th>
               {([['date', 'Date', 'text-left'], ['type', 'Type', 'text-left'], ['amount', 'Amount', 'text-right']] as const).map(([field, label, align]) => (
                 <th
                   key={field}
@@ -166,7 +243,7 @@ export default function MonthView() {
             <tbody>
               {[...Array(8)].map((_, i) => (
                 <tr key={i}>
-                  <td colSpan={5} className="px-4 py-3">
+                  <td colSpan={6} className="px-4 py-3">
                     <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
                   </td>
                 </tr>
@@ -175,9 +252,51 @@ export default function MonthView() {
           ) : (
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {sorted.map((t) => (
-                <tr key={t.id}>
+                <tr key={t.id} className={selectedIds.includes(t.id) ? 'bg-blue-50/60 dark:bg-blue-900/20' : undefined}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(t.id)}
+                      onChange={() => toggleSelected(t.id)}
+                      aria-label={`Select ${t.type}`}
+                      className="rounded border-gray-300 dark:border-gray-600"
+                    />
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{t.date}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{t.type}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                    {editingId === t.id ? (
+                      <input
+                        autoFocus
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onBlur={() => commitRename(t.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.currentTarget.blur();
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        className="w-full border dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEditing(t)}
+                          disabled={submitting}
+                          title="Click to rename"
+                          className="text-left hover:underline decoration-dotted disabled:opacity-50"
+                        >
+                          {t.type}
+                        </button>
+                        {t.trip_id && t.trip_name && (
+                          <button
+                            onClick={() => setOpenTripId(t.trip_id!)}
+                            className="text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900 whitespace-nowrap"
+                          >
+                            {t.trip_name}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-gray-900 dark:text-gray-100">${t.amount.toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{t.account_name || t.source}</td>
                   <td className="px-4 py-3 text-right">
@@ -187,7 +306,7 @@ export default function MonthView() {
               ))}
               {transactions.length === 0 && !error && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                     No transactions for this month.
                   </td>
                 </tr>
@@ -196,6 +315,16 @@ export default function MonthView() {
           )}
         </table>
       </div>
+
+      {openTripId !== null && (
+        <TripDrawer
+          tripId={openTripId}
+          viewMonth={month}
+          viewYear={year}
+          onClose={() => setOpenTripId(null)}
+          onChanged={loadTransactions}
+        />
+      )}
     </div>
   );
 }
