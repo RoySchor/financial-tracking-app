@@ -236,8 +236,16 @@ export const api = {
   renameTransaction: (id: string, type: string) =>
     request<Transaction>(`/transactions/${id}`, { method: 'PATCH', body: JSON.stringify({ type }) }),
 
-  getTrips: (month?: number, year?: number) =>
-    request<Trip[]>(month && year ? `/trips?month=${month}&year=${year}` : '/trips'),
+  getTrips: (month?: number, year?: number, limit?: number) => {
+    const params = new URLSearchParams();
+    if (month && year) {
+      params.set('month', String(month));
+      params.set('year', String(year));
+    }
+    if (limit) params.set('limit', String(limit));
+    const query = params.toString();
+    return request<Trip[]>(query ? `/trips?${query}` : '/trips');
+  },
   getTrip: (id: number) => request<TripDetail>(`/trips/${id}`),
   createTrip: (data: { name: string; sheet_month: number; sheet_year: number; notes?: string | null; transaction_ids: string[] }) =>
     request<TripDetail>('/trips', { method: 'POST', body: JSON.stringify(data) }),

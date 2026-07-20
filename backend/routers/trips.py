@@ -9,6 +9,13 @@ from services.trips_sheets import sync_trips_for_period
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["trips"])
 
+# Sheet tabs are named "Expenses <Month> <Year>"; anything outside this range is
+# a typo rather than a real period, and syncing it would create junk tabs.
+MIN_SHEET_YEAR = 2000
+MAX_SHEET_YEAR = 2100
+
+_UPDATABLE_TRIP_FIELDS = ("name", "sheet_month", "sheet_year", "notes")
+
 
 _TRIP_SELECT = """
     SELECT tr.id, tr.name, tr.sheet_month, tr.sheet_year, tr.notes, tr.synced_to_sheets,
@@ -22,6 +29,16 @@ _TRIP_SELECT = """
 """
 
 
+def _validate_period(month: int | None, year: int | None):
+    if month is not None and not 1 <= month <= 12:
+        raise HTTPException(status_code=400, detail="sheet_month must be 1-12")
+    if year is not None and not MIN_SHEET_YEAR <= year <= MAX_SHEET_YEAR:
+        raise HTTPException(
+            status_code=400,
+            detail=f"sheet_year must be {MIN_SHEET_YEAR}-{MAX_SHEET_YEAR}",
+        )
+
+
 def _fetch_trip(conn, trip_id: int) -> dict | None:
     row = conn.execute(
         f"{_TRIP_SELECT} WHERE tr.id = ? GROUP BY tr.id", (trip_id,)
@@ -31,9 +48,11 @@ def _fetch_trip(conn, trip_id: int) -> dict | None:
 
 def _fetch_trip_transactions(conn, trip_id: int) -> list[dict]:
     rows = conn.execute(
-        """SELECT t.*, COALESCE(pa.display_name, pa.official_name) AS account_name
+        """SELECT t.*, COALESCE(pa.display_name, pa.official_name) AS account_name,
+                  tt.trip_id AS trip_id, tr.name AS trip_name
            FROM trip_transactions tt
            JOIN transactions t ON t.id = tt.transaction_id
+           JOIN trips tr ON tr.id = tt.trip_id
            LEFT JOIN plaid_accounts pa ON t.plaid_account_id = pa.plaid_account_id
            WHERE tt.trip_id = ?
            ORDER BY t.date ASC""",
@@ -42,16 +61,49 @@ def _fetch_trip_transactions(conn, trip_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _sync_period(month: int, year: int):
-    """Push the trip block for a month; never let a Sheets failure fail the request."""
-    try:
-        sync_trips_for_period(month, year)
-    except Exception as e:
-        logger.warning(f"Trip sheet sync failed for {month}/{year}: {type(e).__name__}")
+def _assert_transactions_exist(conn, transaction_ids: list[str]):
+    for txn_id in transaction_ids:
+        exists = conn.execute(
+            "SELECT id FROM transactions WHERE id = ?", (txn_id,)
+        ).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Transaction not found: {txn_id}")
+
+
+def _periods_owning(conn, transaction_ids: list[str]) -> list[tuple[int, int]]:
+    """Sheet periods of the trips that currently own these transactions.
+
+    Claiming a transaction for another trip lowers the previous owner's total, so
+    the previous owner's sheet has to be rewritten too or it keeps a stale number.
+    """
+    if not transaction_ids:
+        return []
+    placeholders = ",".join("?" * len(transaction_ids))
+    rows = conn.execute(
+        f"""SELECT DISTINCT tr.sheet_month, tr.sheet_year
+            FROM trip_transactions tt
+            JOIN trips tr ON tr.id = tt.trip_id
+            WHERE tt.transaction_id IN ({placeholders})""",
+        transaction_ids,
+    ).fetchall()
+    return [(r["sheet_month"], r["sheet_year"]) for r in rows]
+
+
+def _sync_periods(periods: list[tuple[int, int]]):
+    """Push the trip block for each distinct period; Sheets failures never fail the request."""
+    for month, year in dict.fromkeys(periods):
+        try:
+            sync_trips_for_period(month, year)
+        except Exception as e:
+            logger.warning(f"Trip sheet sync failed for {month}/{year}: {type(e).__name__}")
 
 
 @router.get("/trips", response_model=list[TripOut])
-def list_trips(month: int | None = Query(None), year: int | None = Query(None)):
+def list_trips(
+    month: int | None = Query(None),
+    year: int | None = Query(None),
+    limit: int | None = Query(None, ge=1, le=200),
+):
     """Trips overlapping a month, by transaction date or by sheet assignment.
 
     A trip spanning June–July shows up under both months so its transactions stay
@@ -60,7 +112,11 @@ def list_trips(month: int | None = Query(None), year: int | None = Query(None)):
     with get_db() as conn:
         if month is None or year is None:
             rows = conn.execute(
-                f"{_TRIP_SELECT} GROUP BY tr.id ORDER BY start_date DESC, tr.name"
+                f"""{_TRIP_SELECT}
+                    GROUP BY tr.id
+                    ORDER BY start_date DESC, tr.name
+                    LIMIT ?""",
+                (limit if limit is not None else -1,),
             ).fetchall()
             return [dict(r) for r in rows]
 
@@ -74,8 +130,9 @@ def list_trips(month: int | None = Query(None), year: int | None = Query(None)):
                        OR (strftime('%m', t2.date) = ? AND strftime('%Y', t2.date) = ?)
                 )
                 GROUP BY tr.id
-                ORDER BY start_date DESC, tr.name""",
-            (month, year, f"{month:02d}", str(year)),
+                ORDER BY start_date DESC, tr.name
+                LIMIT ?""",
+            (month, year, f"{month:02d}", str(year), limit if limit is not None else -1),
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -95,10 +152,14 @@ def create_trip(trip: TripCreate):
     name = trip.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Trip name cannot be empty")
-    if not 1 <= trip.sheet_month <= 12:
-        raise HTTPException(status_code=400, detail="sheet_month must be 1-12")
+    _validate_period(trip.sheet_month, trip.sheet_year)
 
     with get_db() as conn:
+        # Validate before inserting so a bad id is a 404, not a raw FK IntegrityError.
+        _assert_transactions_exist(conn, trip.transaction_ids)
+        # Capture previous owners before reassigning away from them.
+        periods = _periods_owning(conn, trip.transaction_ids)
+
         cursor = conn.execute(
             """INSERT INTO trips (name, sheet_month, sheet_year, notes)
                VALUES (?, ?, ?, ?)""",
@@ -118,7 +179,7 @@ def create_trip(trip: TripCreate):
         result = _fetch_trip(conn, trip_id)
         result["transactions"] = _fetch_trip_transactions(conn, trip_id)
 
-    _sync_period(trip.sheet_month, trip.sheet_year)
+    _sync_periods([*periods, (trip.sheet_month, trip.sheet_year)])
     return result
 
 
@@ -131,26 +192,30 @@ def update_trip(trip_id: int, update: TripUpdate):
         if not existing:
             raise HTTPException(status_code=404, detail="Trip not found")
 
-        old_month = existing["sheet_month"]
-        old_year = existing["sheet_year"]
+        old_period = (existing["sheet_month"], existing["sheet_year"])
 
-        name = update.name.strip() if update.name is not None else None
-        if name is not None and not name:
-            raise HTTPException(status_code=400, detail="Trip name cannot be empty")
-        if update.sheet_month is not None and not 1 <= update.sheet_month <= 12:
-            raise HTTPException(status_code=400, detail="sheet_month must be 1-12")
+        # model_fields_set distinguishes "omitted" from "explicitly null" — COALESCE
+        # cannot, which would make notes impossible to clear.
+        provided = [f for f in _UPDATABLE_TRIP_FIELDS if f in update.model_fields_set]
+        if not provided:
+            raise HTTPException(status_code=400, detail="No fields to update")
 
-        # Falsy-safe: only overwrite fields the caller actually sent.
+        values = {f: getattr(update, f) for f in provided}
+
+        if "name" in values:
+            name = (values["name"] or "").strip()
+            if not name:
+                raise HTTPException(status_code=400, detail="Trip name cannot be empty")
+            values["name"] = name
+        _validate_period(values.get("sheet_month"), values.get("sheet_year"))
+
+        assignments = ", ".join(f"{f} = ?" for f in provided)
         conn.execute(
-            """UPDATE trips SET
-                 name = COALESCE(?, name),
-                 sheet_month = COALESCE(?, sheet_month),
-                 sheet_year = COALESCE(?, sheet_year),
-                 notes = COALESCE(?, notes),
-                 synced_to_sheets = 0,
-                 updated_at = CURRENT_TIMESTAMP
-               WHERE id = ?""",
-            (name, update.sheet_month, update.sheet_year, update.notes, trip_id),
+            f"""UPDATE trips SET {assignments},
+                  synced_to_sheets = 0,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?""",
+            (*[values[f] for f in provided], trip_id),
         )
         conn.commit()
 
@@ -158,9 +223,7 @@ def update_trip(trip_id: int, update: TripUpdate):
         result["transactions"] = _fetch_trip_transactions(conn, trip_id)
 
     # Reassigning the sheet month must also clear the trip from its old sheet.
-    if (old_month, old_year) != (result["sheet_month"], result["sheet_year"]):
-        _sync_period(old_month, old_year)
-    _sync_period(result["sheet_month"], result["sheet_year"])
+    _sync_periods([old_period, (result["sheet_month"], result["sheet_year"])])
     return result
 
 
@@ -172,12 +235,12 @@ def delete_trip(trip_id: int):
         ).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Trip not found")
-        month, year = existing["sheet_month"], existing["sheet_year"]
+        period = (existing["sheet_month"], existing["sheet_year"])
         # trip_transactions rows cascade; the transactions themselves are untouched.
         conn.execute("DELETE FROM trips WHERE id = ?", (trip_id,))
         conn.commit()
 
-    _sync_period(month, year)
+    _sync_periods([period])
     return {"deleted": True}
 
 
@@ -190,14 +253,11 @@ def add_trip_transactions(trip_id: int, payload: TripTransactionsIn):
         if not trip:
             raise HTTPException(status_code=404, detail="Trip not found")
 
+        _assert_transactions_exist(conn, payload.transaction_ids)
+        # Capture previous owners before reassigning away from them.
+        periods = _periods_owning(conn, payload.transaction_ids)
+
         for txn_id in payload.transaction_ids:
-            exists = conn.execute(
-                "SELECT id FROM transactions WHERE id = ?", (txn_id,)
-            ).fetchone()
-            if not exists:
-                raise HTTPException(
-                    status_code=404, detail=f"Transaction not found: {txn_id}"
-                )
             # Moving a transaction between trips is a reassignment, not a duplicate.
             conn.execute(
                 """INSERT INTO trip_transactions (transaction_id, trip_id)
@@ -210,7 +270,7 @@ def add_trip_transactions(trip_id: int, payload: TripTransactionsIn):
         result = _fetch_trip(conn, trip_id)
         result["transactions"] = _fetch_trip_transactions(conn, trip_id)
 
-    _sync_period(trip["sheet_month"], trip["sheet_year"])
+    _sync_periods([*periods, (trip["sheet_month"], trip["sheet_year"])])
     return result
 
 
@@ -234,5 +294,5 @@ def remove_trip_transaction(trip_id: int, transaction_id: str):
         result = _fetch_trip(conn, trip_id)
         result["transactions"] = _fetch_trip_transactions(conn, trip_id)
 
-    _sync_period(trip["sheet_month"], trip["sheet_year"])
+    _sync_periods([(trip["sheet_month"], trip["sheet_year"])])
     return result

@@ -38,7 +38,7 @@ export default function Dashboard() {
         api.getTransactionSummary(month, year),
         api.getYearlyTotals(year),
         api.getStatus(),
-        api.getTrips(),
+        api.getTrips(undefined, undefined, RECENT_TRIP_LIMIT),
       ]);
       setSummary(s);
       setYearly(y);
@@ -146,7 +146,7 @@ export default function Dashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {trips.slice(0, RECENT_TRIP_LIMIT).map((trip) => (
+            {trips.map((trip) => (
               <div key={trip.id} className="flex justify-between items-center gap-4">
                 <div className="min-w-0">
                   <p className="text-gray-700 dark:text-gray-300 truncate">{trip.name}</p>

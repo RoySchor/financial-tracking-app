@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -8,7 +9,9 @@ import uuid
 from database import get_db
 from models import TransactionOut, CashExpenseIn, TransactionRename
 from services.sheets_writer import write_transaction_to_sheets
+from services.trips_sheets import sync_trips_for_period
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["transactions"])
 
 _CATEGORY_GROUPS: list[dict] | None = None
@@ -231,8 +234,26 @@ def delete_transaction(transaction_id: str):
         existing = conn.execute("SELECT id FROM transactions WHERE id = ?", (transaction_id,)).fetchone()
         if not existing:
             raise HTTPException(status_code=404, detail="Transaction not found")
+
+        # Deleting a transaction lowers its trip's total, so that trip's sheet
+        # block has to be rewritten or it keeps the old number.
+        trip = conn.execute(
+            """SELECT tr.sheet_month, tr.sheet_year
+               FROM trip_transactions tt
+               JOIN trips tr ON tr.id = tt.trip_id
+               WHERE tt.transaction_id = ?""",
+            (transaction_id,),
+        ).fetchone()
+
         conn.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
         conn.commit()
+
+    if trip:
+        try:
+            sync_trips_for_period(trip["sheet_month"], trip["sheet_year"])
+        except Exception as e:
+            logger.warning(f"Trip sheet sync failed after delete: {type(e).__name__}")
+
     return {"deleted": True}
 
 

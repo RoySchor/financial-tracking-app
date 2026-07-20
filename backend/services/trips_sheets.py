@@ -9,6 +9,12 @@ per trip. Storing addresses would silently drift the moment a row is inserted or
 deleted in the sheet by hand, and deleting a trip would require rewriting the
 rows below it anyway. A full rewrite makes renames, retotals, additions and
 deletions all idempotent, and keeps the number of trips per month unbounded.
+
+Template requirement: the trip block must be the only contiguous run of filled
+cells in column E starting at TRIP_BLOCK_START_ROW, and must be followed by at
+least one blank row. Block extent is detected by scanning that contiguous run,
+so anything butting directly against the last trip would be read as part of the
+block and cleared when the block shrinks.
 """
 
 import logging
@@ -27,8 +33,6 @@ TRIP_BLOCK_START_ROW = 10
 TRIP_LABEL_COL = 5  # Column E — trip name
 TRIP_VALUE_COL = 6  # Column F — trip total
 
-# Rows past the last trip that get blanked so deleted trips leave no stale entry.
-TRIP_BLOCK_CLEAR_PADDING = 5
 
 
 def trips_sheets_enabled() -> bool:
@@ -79,7 +83,12 @@ def sync_trips_for_period(month: int, year: int, spreadsheet=None) -> bool:
 
 
 def _write_trip_block(worksheet, trips: list[dict]):
-    """Write every trip into the block, then blank any rows left over."""
+    """Write every trip into the block, then blank only rows the block vacated.
+
+    Clearing is bounded strictly by how many rows the block previously occupied.
+    Blanking a fixed number of rows past the last trip would destroy whatever the
+    template happens to keep below the block.
+    """
     previous_rows = _count_existing_block_rows(worksheet)
 
     updates = []
@@ -94,9 +103,8 @@ def _write_trip_block(worksheet, trips: list[dict]):
             "values": [[round(trip["total"], 2)]],
         })
 
-    # Blank rows the block used to occupy so a removed trip doesn't linger.
-    stale_end = max(previous_rows, len(trips) + TRIP_BLOCK_CLEAR_PADDING)
-    for offset in range(len(trips), stale_end):
+    # Only rows that were part of the block and no longer are.
+    for offset in range(len(trips), previous_rows):
         row = TRIP_BLOCK_START_ROW + offset
         updates.append({"range": gspread_cell_label(row, TRIP_LABEL_COL), "values": [[""]]})
         updates.append({"range": gspread_cell_label(row, TRIP_VALUE_COL), "values": [[""]]})
