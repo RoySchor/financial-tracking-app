@@ -12,6 +12,7 @@ deletions all idempotent, and keeps the number of trips per month unbounded.
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 
 from database import get_db
@@ -30,8 +31,26 @@ TRIP_VALUE_COL = 6  # Column F — trip total
 TRIP_BLOCK_CLEAR_PADDING = 5
 
 
+def trips_sheets_enabled() -> bool:
+    """TEMPORARY — revert the commit that added this before merging.
+
+    Gates every trip write to Google Sheets. Defaults to OFF so trips can be
+    created and edited locally while the real spreadsheet still has trips filled
+    in by hand through July. Once those are entered manually, drop this function
+    and the guard clause in sync_trips_for_period().
+    """
+    return os.getenv("TRIPS_SHEETS_SYNC", "0") == "1"
+
+
 def sync_trips_for_period(month: int, year: int, spreadsheet=None) -> bool:
     """Rewrite the trip block on one month's sheet. Returns True on success."""
+    # TEMPORARY — remove with trips_sheets_enabled() before merging.
+    if not trips_sheets_enabled():
+        logger.info(
+            f"Trip Sheets sync skipped for {month}/{year} (TRIPS_SHEETS_SYNC not enabled)"
+        )
+        return False
+
     if spreadsheet is None:
         spreadsheet = get_spreadsheet()
     if spreadsheet is None:
