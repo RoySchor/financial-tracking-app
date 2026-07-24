@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 import type { Trip } from '../api/client';
-import { dateRangeLabel, formatCurrency } from '../utils/date';
+import { MONTH_NAMES, dateRangeLabel, formatCurrency } from '../utils/date';
 
 interface TripsPanelProps {
+  /** Trips overlapping the viewed month — shown as cards. */
   trips: Trip[];
+  /**
+   * Every recent trip, month-scoped or not. The picker needs the wider list:
+   * a trip only shows up under a month it already touches, so scoping the picker
+   * to `trips` would make it impossible to add a June transaction to a July trip.
+   */
+  allTrips: Trip[];
   loading: boolean;
   month: number;
   year: number;
@@ -17,6 +24,7 @@ interface TripsPanelProps {
 
 export default function TripsPanel({
   trips,
+  allTrips,
   loading,
   month,
   year,
@@ -32,6 +40,11 @@ export default function TripsPanel({
   const [error, setError] = useState<string | null>(null);
 
   const hasSelection = selectedIds.length > 0;
+
+  // Trips already shown as cards above are listed first; the rest are reachable
+  // but labelled with their sheet month so the destination is unambiguous.
+  const thisMonthIds = new Set(trips.map((t) => t.id));
+  const otherTrips = allTrips.filter((t) => !thisMonthIds.has(t.id));
 
   async function handleCreate() {
     const name = newName.trim();
@@ -136,7 +149,7 @@ export default function TripsPanel({
               >
                 New trip from selection
               </button>
-              {trips.length > 0 && (
+              {allTrips.length > 0 && (
                 <select
                   value=""
                   onChange={(e) => e.target.value && handleAddToTrip(Number(e.target.value))}
@@ -144,9 +157,22 @@ export default function TripsPanel({
                   className="border dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-50"
                 >
                   <option value="">Add to existing trip…</option>
-                  {trips.map((trip) => (
-                    <option key={trip.id} value={trip.id}>{trip.name}</option>
-                  ))}
+                  {trips.length > 0 && (
+                    <optgroup label="This month">
+                      {trips.map((trip) => (
+                        <option key={trip.id} value={trip.id}>{trip.name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {otherTrips.length > 0 && (
+                    <optgroup label="Other months">
+                      {otherTrips.map((trip) => (
+                        <option key={trip.id} value={trip.id}>
+                          {trip.name} — {MONTH_NAMES[trip.sheet_month - 1]} {trip.sheet_year}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               )}
               <button

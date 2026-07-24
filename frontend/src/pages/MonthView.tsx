@@ -9,10 +9,15 @@ type SortDir = 'asc' | 'desc';
 
 const SHEET_REMINDER = 'Renamed in the app only — update the Google Sheet manually to match.';
 
+// The "add to existing trip" picker offers trips beyond this month, so a trip
+// created in July can still receive a June transaction.
+const TRIP_PICKER_LIMIT = 50;
+
 export default function MonthView() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [grouped, setGrouped] = useState<GroupedCategory[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -36,14 +41,16 @@ export default function MonthView() {
   async function loadTransactions() {
     setLoading(true);
     try {
-      const [data, groups, tripList] = await Promise.all([
+      const [data, groups, tripList, allTripList] = await Promise.all([
         api.getTransactions(month, year),
         api.getGroupedTotals(month, year),
         api.getTrips(month, year),
+        api.getTrips(undefined, undefined, TRIP_PICKER_LIMIT),
       ]);
       setTransactions(data);
       setGrouped(groups);
       setTrips(tripList);
+      setAllTrips(allTripList);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load transactions');
@@ -171,6 +178,7 @@ export default function MonthView() {
 
       <TripsPanel
         trips={trips}
+        allTrips={allTrips}
         loading={loading}
         month={month}
         year={year}
