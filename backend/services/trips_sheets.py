@@ -68,7 +68,13 @@ def sync_trips_for_period(month: int, year: int, spreadsheet=None) -> bool:
 
         existing = [ws.title for ws in spreadsheet.worksheets()]
         if sheet_title not in existing:
+            # Count this as a failed attempt, not a silent no-op. Without marking,
+            # these trips keep retry_count at 0 forever: every retry pass picks them
+            # up again, they never reach MAX_RETRIES, and they never show up in the
+            # status failed count. Matches write_transaction_to_sheets, which marks
+            # the row when ensure_month_sheet_exists() fails.
             logger.warning(f"Trip sync skipped: sheet '{sheet_title}' does not exist")
+            _mark_trips_failed([t["id"] for t in trips])
             return False
 
         worksheet = spreadsheet.worksheet(sheet_title)

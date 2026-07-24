@@ -18,6 +18,9 @@ export default function TripDrawer({ tripId, viewMonth, viewYear, onClose, onCha
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
+  // Held as a draft rather than saved per keystroke: typing "2026" would otherwise
+  // PUT sheet_year=2 first, and clearing the field would PUT 0 — both rejected.
+  const [yearDraft, setYearDraft] = useState('');
 
   useEffect(() => {
     loadTrip();
@@ -29,6 +32,7 @@ export default function TripDrawer({ tripId, viewMonth, viewYear, onClose, onCha
       const data = await api.getTrip(tripId);
       setTrip(data);
       setNameDraft(data.name);
+      setYearDraft(String(data.sheet_year));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load trip');
@@ -43,6 +47,7 @@ export default function TripDrawer({ tripId, viewMonth, viewYear, onClose, onCha
       const updated = await api.updateTrip(tripId, changes);
       setTrip(updated);
       setNameDraft(updated.name);
+      setYearDraft(String(updated.sheet_year));
       setError(null);
       onChanged();
     } catch (e) {
@@ -87,6 +92,17 @@ export default function TripDrawer({ tripId, viewMonth, viewYear, onClose, onCha
       return;
     }
     saveTrip({ name: trimmed });
+  }
+
+  function commitYear() {
+    const raw = yearDraft.trim();
+    const parsed = Number(raw);
+    // An empty field parses to 0, so check it separately before trusting parsed.
+    if (!trip || !raw || !Number.isInteger(parsed) || parsed === trip.sheet_year) {
+      setYearDraft(String(trip?.sheet_year ?? ''));
+      return;
+    }
+    saveTrip({ sheet_year: parsed });
   }
 
   return (
@@ -168,8 +184,16 @@ export default function TripDrawer({ tripId, viewMonth, viewYear, onClose, onCha
                 <input
                   id="trip-sheet-year"
                   type="number"
-                  value={trip.sheet_year}
-                  onChange={(e) => saveTrip({ sheet_year: Number(e.target.value) })}
+                  value={yearDraft}
+                  onChange={(e) => setYearDraft(e.target.value)}
+                  onBlur={commitYear}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      setYearDraft(String(trip.sheet_year));
+                      e.currentTarget.blur();
+                    }
+                  }}
                   disabled={saving}
                   className="w-full border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-50"
                 />
