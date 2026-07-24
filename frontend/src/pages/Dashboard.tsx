@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../api/client';
-import type { TransactionSummary, MonthlyTotal, AppStatus } from '../api/client';
+import type { TransactionSummary, MonthlyTotal, AppStatus, Trip } from '../api/client';
+import { dateRangeLabel, formatCurrency } from '../utils/date';
+
+const RECENT_TRIP_LIMIT = 5;
 
 export default function Dashboard() {
   const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [yearly, setYearly] = useState<MonthlyTotal[]>([]);
   const [status, setStatus] = useState<AppStatus | null>(null);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,14 +34,16 @@ export default function Dashboard() {
   async function loadData(): Promise<AppStatus | null> {
     setLoading(true);
     try {
-      const [s, y, st] = await Promise.all([
+      const [s, y, st, tripList] = await Promise.all([
         api.getTransactionSummary(month, year),
         api.getYearlyTotals(year),
         api.getStatus(),
+        api.getTrips(undefined, undefined, RECENT_TRIP_LIMIT),
       ]);
       setSummary(s);
       setYearly(y);
       setStatus(st);
+      setTrips(tripList);
       setError(null);
       return st;
     } catch (e) {
@@ -124,6 +131,32 @@ export default function Dashboard() {
               <div key={i} className="flex justify-between items-center">
                 <span className="text-gray-700 dark:text-gray-300">{item.type}</span>
                 <span className="font-medium text-gray-900 dark:text-gray-100">${item.total.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {trips.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Recent Trips</h2>
+            <Link to="/month" className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+              Manage in Month view
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {trips.map((trip) => (
+              <div key={trip.id} className="flex justify-between items-center gap-4">
+                <div className="min-w-0">
+                  <p className="text-gray-700 dark:text-gray-300 truncate">{trip.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {dateRangeLabel(trip.start_date, trip.end_date)} · {trip.transaction_count} txns
+                  </p>
+                </div>
+                <span className="font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  {formatCurrency(trip.total)}
+                </span>
               </div>
             ))}
           </div>

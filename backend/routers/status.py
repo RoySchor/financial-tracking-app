@@ -31,6 +31,11 @@ def get_status():
                WHERE synced_to_sheets = 0 AND sheets_retry_count >= 5"""
         ).fetchone()["c"]
 
+        failed_sheets += conn.execute(
+            """SELECT COUNT(*) as c FROM trips
+               WHERE synced_to_sheets = 0 AND sheets_retry_count >= 5"""
+        ).fetchone()["c"]
+
     db_size = 0
     if os.path.exists(DB_PATH):
         db_size = round(os.path.getsize(DB_PATH) / (1024 * 1024), 2)

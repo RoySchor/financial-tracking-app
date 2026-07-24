@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from database import get_db
 from services.sheets_client import get_spreadsheet
 from services.sheets_template import ensure_month_sheet_exists, MONTH_NAMES
+from services.trips_sheets import sync_trips_for_period
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ BACKOFF_MINUTES = [1, 5, 30, 120]
 MAX_RETRIES = 5
 MAX_RETRY_BATCH = 20
 RETRY_DELAY_SECONDS = 3
-VALID_TABLES = {"transactions", "income", "assets"}
+VALID_TABLES = {"transactions", "income", "assets", "trips"}
 
 
 def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
@@ -271,6 +272,33 @@ def retry_failed_writes() -> dict:
                     continue
                 retried += 1
                 if write_asset_to_sheets(asset, spreadsheet=spreadsheet):
+                    succeeded += 1
+                total_writes += 1
+                time.sleep(RETRY_DELAY_SECONDS)
+
+        if total_writes < MAX_RETRY_BATCH:
+            failed_trips = conn.execute(
+                """SELECT * FROM trips
+                   WHERE synced_to_sheets = 0 AND sheets_retry_count < ?""",
+                (MAX_RETRIES,),
+            ).fetchall()
+
+            # Trip writes rewrite a whole month block, so retry once per period
+            # rather than once per trip.
+            periods = []
+            for row in failed_trips:
+                trip = dict(row)
+                if not _should_retry(trip, now):
+                    continue
+                period = (trip["sheet_month"], trip["sheet_year"])
+                if period not in periods:
+                    periods.append(period)
+
+            for month, year in periods:
+                if total_writes >= MAX_RETRY_BATCH:
+                    break
+                retried += 1
+                if sync_trips_for_period(month, year, spreadsheet=spreadsheet):
                     succeeded += 1
                 total_writes += 1
                 time.sleep(RETRY_DELAY_SECONDS)
