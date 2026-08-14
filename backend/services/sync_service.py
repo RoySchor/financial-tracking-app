@@ -47,69 +47,47 @@ def run_sync() -> dict:
 
     mappings = load_mappings()
 
+    # Phase 1: read the cursors. Short-lived, read-only.
+    with get_db() as conn:
+        cursors = {
+            _token_key(token): _read_cursor(conn, _token_key(token))
+            for token, _ in tokens
+        }
+
+    # Phase 2: all Plaid I/O, with no connection open. Holding the SQLite write
+    # lock across these HTTP calls locks out every other writer for the whole sync.
+    fetched = [
+        _fetch_token(client, token, institution, cursors[_token_key(token)])
+        for token, institution in tokens
+    ]
+
+    # Phase 3: one short write transaction for everything we fetched.
     total_added = 0
     total_modified = 0
     total_removed = 0
     synced_ids: list[str] = []
 
     with get_db() as conn:
-        for token, institution in tokens:
-            _sync_accounts(conn, client, token, institution)
-            key = _token_key(token)
+        for batch in fetched:
+            _write_accounts(conn, batch["accounts"], batch["institution"])
 
-            cursor_row = conn.execute(
-                "SELECT cursor FROM sync_state WHERE account_id = ?", (key,)
-            ).fetchone()
+            for txn in batch["upserts"]:
+                _upsert_transaction(conn, txn, mappings)
+                synced_ids.append(txn.transaction_id)
 
-            cursor = cursor_row["cursor"] if cursor_row else None
+            for txn_id in batch["removed_ids"]:
+                conn.execute("DELETE FROM transactions WHERE id = ?", (txn_id,))
 
-            if cursor is None:
-                transactions = backfill_transactions(client, token)
-                for txn in transactions:
-                    if txn.pending:
-                        continue
-                    if _should_skip(txn):
-                        continue
-                    _upsert_transaction(conn, txn, mappings)
-                    synced_ids.append(txn.transaction_id)
-                    total_added += 1
-
-                result = sync_transactions(client, token, "")
-                new_cursor = result["cursor"]
-            else:
-                result = sync_transactions(client, token, cursor)
-                new_cursor = result["cursor"]
-
-                for txn in result["added"]:
-                    if txn.pending:
-                        continue
-                    if _should_skip(txn):
-                        continue
-                    _upsert_transaction(conn, txn, mappings)
-                    synced_ids.append(txn.transaction_id)
-                    total_added += 1
-
-                for txn in result["modified"]:
-                    if txn.pending:
-                        continue
-                    if _should_skip(txn):
-                        continue
-                    _upsert_transaction(conn, txn, mappings)
-                    synced_ids.append(txn.transaction_id)
-                    total_modified += 1
-
-                for txn in result["removed"]:
-                    txn_id = txn.transaction_id if hasattr(txn, "transaction_id") else txn.get("transaction_id")
-                    if txn_id:
-                        conn.execute("DELETE FROM transactions WHERE id = ?", (txn_id,))
-                        total_removed += 1
+            total_added += batch["added"]
+            total_modified += batch["modified"]
+            total_removed += len(batch["removed_ids"])
 
             now = datetime.now(timezone.utc).isoformat()
             conn.execute(
                 """INSERT INTO sync_state (account_id, cursor, last_synced_at)
                    VALUES (?, ?, ?)
                    ON CONFLICT(account_id) DO UPDATE SET cursor = ?, last_synced_at = ?""",
-                (key, new_cursor, now, new_cursor, now),
+                (batch["key"], batch["cursor"], now, batch["cursor"], now),
             )
 
         conn.commit()
@@ -152,14 +130,69 @@ def run_sync() -> dict:
     }
 
 
-def _sync_accounts(conn, client, access_token: str, institution: str):
-    now = datetime.now(timezone.utc).isoformat()
+def _read_cursor(conn, key: str) -> str | None:
+    row = conn.execute(
+        "SELECT cursor FROM sync_state WHERE account_id = ?", (key,)
+    ).fetchone()
+    return row["cursor"] if row else None
+
+
+def _fetch_token(client, access_token: str, institution: str, cursor: str | None) -> dict:
+    """Pull everything Plaid has for one token. No DB connection is held here."""
     try:
         accounts = get_accounts(client, access_token)
     except Exception as e:
         logger.warning(f"Failed to fetch accounts for {institution}: {type(e).__name__}")
-        return
+        accounts = []
 
+    upserts = []
+    removed_ids = []
+    added = 0
+    modified = 0
+
+    if cursor is None:
+        for txn in backfill_transactions(client, access_token):
+            if txn.pending or _should_skip(txn):
+                continue
+            upserts.append(txn)
+            added += 1
+        # A fresh cursor from "" so the next sync picks up where the backfill ended.
+        new_cursor = sync_transactions(client, access_token, "")["cursor"]
+    else:
+        result = sync_transactions(client, access_token, cursor)
+        new_cursor = result["cursor"]
+
+        for txn in result["added"]:
+            if txn.pending or _should_skip(txn):
+                continue
+            upserts.append(txn)
+            added += 1
+
+        for txn in result["modified"]:
+            if txn.pending or _should_skip(txn):
+                continue
+            upserts.append(txn)
+            modified += 1
+
+        for txn in result["removed"]:
+            txn_id = txn.transaction_id if hasattr(txn, "transaction_id") else txn.get("transaction_id")
+            if txn_id:
+                removed_ids.append(txn_id)
+
+    return {
+        "key": _token_key(access_token),
+        "institution": institution,
+        "accounts": accounts,
+        "cursor": new_cursor,
+        "upserts": upserts,
+        "removed_ids": removed_ids,
+        "added": added,
+        "modified": modified,
+    }
+
+
+def _write_accounts(conn, accounts: list[dict], institution: str):
+    now = datetime.now(timezone.utc).isoformat()
     for acct in accounts:
         conn.execute(
             """INSERT INTO plaid_accounts (plaid_account_id, official_name, institution, account_mask, account_type, last_synced_at)
