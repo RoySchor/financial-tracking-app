@@ -56,10 +56,20 @@ def run_sync() -> dict:
 
     # Phase 2: all Plaid I/O, with no connection open. Holding the SQLite write
     # lock across these HTTP calls locks out every other writer for the whole sync.
-    fetched = [
-        _fetch_token(client, token, institution, cursors[_token_key(token)])
-        for token, institution in tokens
-    ]
+    # One institution being down must not discard the tokens that did succeed —
+    # a single write transaction covers them all, so an escaping error would
+    # roll back every token's work including its cursor advancement.
+    fetched = []
+    failed = 0
+    for token, institution in tokens:
+        try:
+            fetched.append(_fetch_token(client, token, institution, cursors[_token_key(token)]))
+        except Exception as e:
+            failed += 1
+            logger.error(f"Plaid fetch failed for {institution}, skipping: {type(e).__name__}")
+
+    if failed and not fetched:
+        raise RuntimeError(f"Plaid fetch failed for all {failed} token(s)")
 
     # Phase 3: one short write transaction for everything we fetched.
     total_added = 0
@@ -127,6 +137,7 @@ def run_sync() -> dict:
         "added": total_added,
         "modified": total_modified,
         "removed": total_removed,
+        "failed_tokens": failed,
     }
 
 
