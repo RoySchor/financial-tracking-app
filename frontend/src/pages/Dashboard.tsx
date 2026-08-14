@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [partialSync, setPartialSync] = useState<number | null>(null);
 
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -56,8 +57,14 @@ export default function Dashboard() {
 
   async function triggerSync() {
     setSyncing(true);
+    setPartialSync(null);
     try {
-      await api.triggerSync();
+      const result = await api.triggerSync();
+      // A sync where some institutions failed still returns 200 and commits the
+      // rest — without this the run looks identical to a clean one.
+      if (result.failed_tokens) {
+        setPartialSync(result.failed_tokens);
+      }
       await loadData();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sync failed');
@@ -92,6 +99,16 @@ export default function Dashboard() {
         <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
           {error}
           <button onClick={loadData} className="ml-4 underline text-sm">Retry</button>
+        </div>
+      )}
+
+      {partialSync !== null && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 px-4 py-3 rounded-lg">
+          Partial sync: {partialSync} {partialSync === 1 ? 'institution' : 'institutions'} could not be
+          reached. Everything else synced — check the backend log for which, then retry.
+          <button onClick={triggerSync} disabled={syncing} className="ml-4 underline text-sm disabled:opacity-50">
+            Retry sync
+          </button>
         </div>
       )}
 
