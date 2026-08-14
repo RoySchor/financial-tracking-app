@@ -133,6 +133,8 @@ export interface SyncResult {
   added: number;
   modified: number;
   removed: number;
+  /** Institutions whose Plaid fetch failed. The rest of the sync still committed. */
+  failed_tokens?: number;
   error?: string;
   investments?: {
     accounts_synced: number;
