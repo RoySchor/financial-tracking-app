@@ -8,6 +8,12 @@ SCOPES = [
 ]
 
 
+def is_quota_error(exc: Exception) -> bool:
+    """True for Sheets 429s (rate/quota), which say nothing about the row itself."""
+    response = getattr(exc, "response", None)
+    return getattr(response, "status_code", None) == 429
+
+
 def get_sheets_client():
     creds_path = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
     if not creds_path or not os.path.exists(creds_path):

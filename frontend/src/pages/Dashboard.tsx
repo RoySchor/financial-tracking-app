@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../api/client';
@@ -21,7 +21,14 @@ export default function Dashboard() {
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
+  // StrictMode mounts twice in dev, which fired two concurrent syncs and doubled
+  // the Google Sheets read volume — enough on its own to trip the per-minute quota.
+  const didAutoSync = useRef(false);
+
   useEffect(() => {
+    if (didAutoSync.current) return;
+    didAutoSync.current = true;
+
     loadData().then((st) => {
       if (!st?.last_sync) {
         triggerSync();

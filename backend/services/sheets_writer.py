@@ -3,8 +3,8 @@ import time
 from datetime import datetime, timezone
 
 from database import get_db
-from services.sheets_client import get_spreadsheet
-from services.sheets_template import ensure_month_sheet_exists, MONTH_NAMES
+from services.sheets_client import get_spreadsheet, is_quota_error
+from services.sheets_template import get_month_worksheet, MONTH_NAMES
 from services.trips_sheets import sync_trips_for_period
 
 logger = logging.getLogger(__name__)
@@ -37,13 +37,10 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
         month = int(parts[1])
         day = int(parts[2])
 
-        if not ensure_month_sheet_exists(month, year, spreadsheet=spreadsheet):
+        worksheet = get_month_worksheet(month, year, spreadsheet=spreadsheet)
+        if worksheet is None:
             _mark_retry_failed(transaction["id"], "transactions")
             return False
-
-        month_name = MONTH_NAMES[month - 1]
-        sheet_title = f"Expenses {month_name} {year}"
-        worksheet = spreadsheet.worksheet(sheet_title)
 
         formatted_date = f"{month}/{day}/{year}"
         row = [
@@ -70,7 +67,7 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Sheets write failed for transaction {transaction.get('id')}: {e}")
-        _mark_retry_failed(transaction["id"], "transactions")
+        _mark_retry_failed(transaction["id"], "transactions", count_attempt=not is_quota_error(e))
         return False
 
 
@@ -134,7 +131,7 @@ def write_income_to_sheets(income: dict, spreadsheet=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Sheets write failed for income {income.get('id')}: {e}")
-        _mark_retry_failed(income["id"], "income")
+        _mark_retry_failed(income["id"], "income", count_attempt=not is_quota_error(e))
         return False
 
 
@@ -204,7 +201,7 @@ def write_asset_to_sheets(asset: dict, spreadsheet=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Sheets write failed for asset {asset.get('id')}: {e}")
-        _mark_retry_failed(asset["id"], "assets")
+        _mark_retry_failed(asset["id"], "assets", count_attempt=not is_quota_error(e))
         return False
 
 
@@ -334,14 +331,22 @@ def _should_retry(row: dict, now: datetime) -> bool:
     return elapsed >= wait_minutes
 
 
-def _mark_retry_failed(row_id, table: str):
+def _mark_retry_failed(row_id, table: str, count_attempt: bool = True):
+    """Record a failed Sheets write.
+
+    A quota error is a property of how fast we called the API, not of the row, so
+    it only stamps the timestamp (which the backoff reads) without spending one of
+    the MAX_RETRIES attempts. Otherwise a burst of 429s would permanently strand
+    perfectly valid rows.
+    """
     if table not in VALID_TABLES:
         raise ValueError(f"Invalid table: {table}")
     now = datetime.now(timezone.utc).isoformat()
+    increment = "sheets_retry_count + 1" if count_attempt else "sheets_retry_count"
     with get_db() as conn:
         conn.execute(
             f"""UPDATE {table}
-                SET sheets_retry_count = sheets_retry_count + 1,
+                SET sheets_retry_count = {increment},
                     sheets_last_retry_at = ?
                 WHERE id = ?""",
             (now, row_id),
