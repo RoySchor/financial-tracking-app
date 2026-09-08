@@ -150,12 +150,17 @@ def _mark_trips_failed(trip_ids: list[int], count_attempt: bool = True):
         return
     now = datetime.now(timezone.utc).isoformat()
     placeholders = ",".join("?" * len(trip_ids))
-    increment = "sheets_retry_count + 1" if count_attempt else "sheets_retry_count"
+    # See _mark_retry_failed in sheets_writer: quota errors advance the backoff
+    # without spending an attempt, so they neither strand nor hammer.
+    if count_attempt:
+        counters = "sheets_retry_count = sheets_retry_count + 1"
+    else:
+        counters = "sheets_quota_deferrals = sheets_quota_deferrals + 1"
     with get_db() as conn:
         conn.execute(
             f"""UPDATE trips
                 SET synced_to_sheets = 0,
-                    sheets_retry_count = {increment},
+                    {counters},
                     sheets_last_retry_at = ?
                 WHERE id IN ({placeholders})""",
             [now, *trip_ids],

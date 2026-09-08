@@ -48,6 +48,11 @@ def get_month_worksheet(month: int, year: int, spreadsheet=None):
     _replace_placeholders(new_sheet, month_name, year)
     # Rename the table before rewriting formulas: the rewritten formulas reference
     # the new name, so a failed rename must not leave them pointing at nothing.
+    # Skipping the rewrite on a failed rename is currently inert: the template
+    # totals with plain ranges (=Sum(C:C)), so there are no table-name formulas to
+    # rewrite. It matters if one is ever added — a duplicated sheet's table is
+    # auto-named Expenses_Month_Year_N, so rewriting to a name the rename never
+    # applied would silently aggregate the wrong sheet.
     if _rename_table(spreadsheet, new_sheet, TEMPLATE_TABLE_NAME, new_table_name):
         _replace_table_references(new_sheet, TEMPLATE_TABLE_NAME, new_table_name)
     _populate_recurring_rows(new_sheet, month, year)

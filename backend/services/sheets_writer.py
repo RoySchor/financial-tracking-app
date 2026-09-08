@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from database import get_db
 from services.sheets_client import get_spreadsheet, is_quota_error
-from services.sheets_template import get_month_worksheet, MONTH_NAMES
+from services.sheets_template import get_month_worksheet
 from services.trips_sheets import sync_trips_for_period
 
 logger = logging.getLogger(__name__)
@@ -324,7 +324,10 @@ def _should_retry(row: dict, now: datetime) -> bool:
     if last_retry_dt.tzinfo is None:
         last_retry_dt = last_retry_dt.replace(tzinfo=timezone.utc)
 
-    backoff_idx = min(retry_count, len(BACKOFF_MINUTES) - 1)
+    # Quota deferrals advance the backoff but not the attempt budget, so a
+    # rate-limited row still slows down instead of retrying every minute forever.
+    attempts = retry_count + (row.get("sheets_quota_deferrals") or 0)
+    backoff_idx = min(attempts, len(BACKOFF_MINUTES) - 1)
     wait_minutes = BACKOFF_MINUTES[backoff_idx]
     elapsed = (now - last_retry_dt).total_seconds() / 60
 
@@ -335,18 +338,24 @@ def _mark_retry_failed(row_id, table: str, count_attempt: bool = True):
     """Record a failed Sheets write.
 
     A quota error is a property of how fast we called the API, not of the row, so
-    it only stamps the timestamp (which the backoff reads) without spending one of
-    the MAX_RETRIES attempts. Otherwise a burst of 429s would permanently strand
-    perfectly valid rows.
+    it must not spend one of the MAX_RETRIES attempts — a burst of 429s would
+    otherwise permanently strand perfectly valid rows. It still has to slow the
+    row down, though, so it advances sheets_quota_deferrals, which feeds the
+    backoff schedule alongside the attempt count. A row failing only on quota
+    therefore backs off to the 2-hour ceiling and keeps trying rather than either
+    hammering every minute or being abandoned.
     """
     if table not in VALID_TABLES:
         raise ValueError(f"Invalid table: {table}")
     now = datetime.now(timezone.utc).isoformat()
-    increment = "sheets_retry_count + 1" if count_attempt else "sheets_retry_count"
+    if count_attempt:
+        counters = "sheets_retry_count = sheets_retry_count + 1"
+    else:
+        counters = "sheets_quota_deferrals = sheets_quota_deferrals + 1"
     with get_db() as conn:
         conn.execute(
             f"""UPDATE {table}
-                SET sheets_retry_count = {increment},
+                SET {counters},
                     sheets_last_retry_at = ?
                 WHERE id = ?""",
             (now, row_id),
