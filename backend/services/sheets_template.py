@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from database import get_db
-from services.sheets_client import get_spreadsheet
+from services.sheets_client import get_spreadsheet, is_quota_error
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +45,41 @@ def get_month_worksheet(month: int, year: int, spreadsheet=None):
         new_sheet_name=sheet_title,
     )
 
-    _replace_placeholders(new_sheet, month_name, year)
-    # Rename the table before rewriting formulas: the rewritten formulas reference
-    # the new name, so a failed rename must not leave them pointing at nothing.
-    # Skipping the rewrite on a failed rename is currently inert: the template
-    # totals with plain ranges (=Sum(C:C)), so there are no table-name formulas to
-    # rewrite. It matters if one is ever added — a duplicated sheet's table is
-    # auto-named Expenses_Month_Year_N, so rewriting to a name the rename never
-    # applied would silently aggregate the wrong sheet.
-    if _rename_table(spreadsheet, new_sheet, TEMPLATE_TABLE_NAME, new_table_name):
-        _replace_table_references(new_sheet, TEMPLATE_TABLE_NAME, new_table_name)
-    _populate_recurring_rows(new_sheet, month, year)
+    # A tab that exists is treated as finished on every later call, so a setup step
+    # failing midway (typically a 429) would leave placeholders unfilled and
+    # recurring rows missing for good. Delete the tab we just created so the next
+    # retry rebuilds it from scratch. This is safe only because nothing outside
+    # setup has touched the tab yet: callers append rows after this returns.
+    try:
+        _replace_placeholders(new_sheet, month_name, year)
+        # Rename the table before rewriting formulas: the rewritten formulas reference
+        # the new name, so a failed rename must not leave them pointing at nothing.
+        # Skipping the rewrite on a failed rename is currently inert: the template
+        # totals with plain ranges (=Sum(C:C)), so there are no table-name formulas to
+        # rewrite. It matters if one is ever added — a duplicated sheet's table is
+        # auto-named Expenses_Month_Year_N, so rewriting to a name the rename never
+        # applied would silently aggregate the wrong sheet.
+        if _rename_table(spreadsheet, new_sheet, TEMPLATE_TABLE_NAME, new_table_name):
+            _replace_table_references(new_sheet, TEMPLATE_TABLE_NAME, new_table_name)
+        _populate_recurring_rows(new_sheet, month, year)
+    except Exception:
+        _discard_incomplete_sheet(spreadsheet, new_sheet)
+        raise
 
     return new_sheet
+
+
+def _discard_incomplete_sheet(spreadsheet, worksheet):
+    try:
+        spreadsheet.del_worksheet(worksheet)
+        logger.warning(f"Deleted incomplete sheet '{worksheet.title}' so the next retry rebuilds it")
+    except Exception as e:
+        # The original setup error is re-raised by the caller; this one only
+        # means the half-built tab needs deleting by hand.
+        logger.error(
+            f"Could not delete incomplete sheet '{worksheet.title}' ({type(e).__name__}); "
+            f"delete it manually or it will be reused unfinished"
+        )
 
 
 def _replace_placeholders(worksheet, month_name: str, year: int):
@@ -108,9 +130,13 @@ def _rename_table(spreadsheet, worksheet, old_table_name: str, new_table_name: s
                         }]
                     })
                     return True
-        logger.warning(f"Table rename skipped: no table matching '{old_table_name}' found")
+        logger.info(f"Table rename skipped: no table matching '{old_table_name}' found")
         return False
     except Exception as e:
+        # A 429 is transient: let it roll back the new tab so a retry renames it,
+        # rather than keeping a tab whose table never gets renamed.
+        if is_quota_error(e):
+            raise
         logger.error(
             f"Table rename failed ({old_table_name} -> {new_table_name}): {e}. "
             f"Formulas on this sheet were left pointing at the template table."
