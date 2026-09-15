@@ -3,8 +3,8 @@ import time
 from datetime import datetime, timezone
 
 from database import get_db
-from services.sheets_client import get_spreadsheet
-from services.sheets_template import ensure_month_sheet_exists, MONTH_NAMES
+from services.sheets_client import get_spreadsheet, is_quota_error
+from services.sheets_template import get_month_worksheet
 from services.trips_sheets import sync_trips_for_period
 
 logger = logging.getLogger(__name__)
@@ -37,13 +37,10 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
         month = int(parts[1])
         day = int(parts[2])
 
-        if not ensure_month_sheet_exists(month, year, spreadsheet=spreadsheet):
+        worksheet = get_month_worksheet(month, year, spreadsheet=spreadsheet)
+        if worksheet is None:
             _mark_retry_failed(transaction["id"], "transactions")
             return False
-
-        month_name = MONTH_NAMES[month - 1]
-        sheet_title = f"Expenses {month_name} {year}"
-        worksheet = spreadsheet.worksheet(sheet_title)
 
         formatted_date = f"{month}/{day}/{year}"
         row = [
@@ -70,7 +67,7 @@ def write_transaction_to_sheets(transaction: dict, spreadsheet=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Sheets write failed for transaction {transaction.get('id')}: {e}")
-        _mark_retry_failed(transaction["id"], "transactions")
+        _mark_retry_failed(transaction["id"], "transactions", count_attempt=not is_quota_error(e))
         return False
 
 
@@ -134,7 +131,7 @@ def write_income_to_sheets(income: dict, spreadsheet=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Sheets write failed for income {income.get('id')}: {e}")
-        _mark_retry_failed(income["id"], "income")
+        _mark_retry_failed(income["id"], "income", count_attempt=not is_quota_error(e))
         return False
 
 
@@ -204,7 +201,7 @@ def write_asset_to_sheets(asset: dict, spreadsheet=None) -> bool:
         return True
     except Exception as e:
         logger.warning(f"Sheets write failed for asset {asset.get('id')}: {e}")
-        _mark_retry_failed(asset["id"], "assets")
+        _mark_retry_failed(asset["id"], "assets", count_attempt=not is_quota_error(e))
         return False
 
 
@@ -327,21 +324,38 @@ def _should_retry(row: dict, now: datetime) -> bool:
     if last_retry_dt.tzinfo is None:
         last_retry_dt = last_retry_dt.replace(tzinfo=timezone.utc)
 
-    backoff_idx = min(retry_count, len(BACKOFF_MINUTES) - 1)
+    # Quota deferrals advance the backoff but not the attempt budget, so a
+    # rate-limited row still slows down instead of retrying every minute forever.
+    attempts = retry_count + (row.get("sheets_quota_deferrals") or 0)
+    backoff_idx = min(attempts, len(BACKOFF_MINUTES) - 1)
     wait_minutes = BACKOFF_MINUTES[backoff_idx]
     elapsed = (now - last_retry_dt).total_seconds() / 60
 
     return elapsed >= wait_minutes
 
 
-def _mark_retry_failed(row_id, table: str):
+def _mark_retry_failed(row_id, table: str, count_attempt: bool = True):
+    """Record a failed Sheets write.
+
+    A quota error is a property of how fast we called the API, not of the row, so
+    it must not spend one of the MAX_RETRIES attempts — a burst of 429s would
+    otherwise permanently strand perfectly valid rows. It still has to slow the
+    row down, though, so it advances sheets_quota_deferrals, which feeds the
+    backoff schedule alongside the attempt count. A row failing only on quota
+    therefore backs off to the 2-hour ceiling and keeps trying rather than either
+    hammering every minute or being abandoned.
+    """
     if table not in VALID_TABLES:
         raise ValueError(f"Invalid table: {table}")
     now = datetime.now(timezone.utc).isoformat()
+    if count_attempt:
+        counters = "sheets_retry_count = sheets_retry_count + 1"
+    else:
+        counters = "sheets_quota_deferrals = sheets_quota_deferrals + 1"
     with get_db() as conn:
         conn.execute(
             f"""UPDATE {table}
-                SET sheets_retry_count = sheets_retry_count + 1,
+                SET {counters},
                     sheets_last_retry_at = ?
                 WHERE id = ?""",
             (now, row_id),
