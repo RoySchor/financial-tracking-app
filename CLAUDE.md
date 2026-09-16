@@ -86,4 +86,4 @@ Requires `.env` at project root (see `.env.example`). Key vars:
 No test suite currently. Verify changes by:
 1. `make dev` and exercise the UI
 2. Check Python syntax: `.venv/bin/python -c "import py_compile; py_compile.compile('backend/file.py', doraise=True)"`
-3. Check TypeScript: `cd frontend && npx tsc --noEmit`
+3. Check TypeScript: `cd frontend && npx tsc -b --noEmit` — the `-b` matters. The root `tsconfig.json` is `"files": []` plus project references, so a plain `tsc --noEmit` checks nothing and exits 0.

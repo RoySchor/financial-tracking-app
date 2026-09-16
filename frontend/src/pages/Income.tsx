@@ -16,10 +16,14 @@ export default function Income() {
   const [submitting, setSubmitting] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  // Snapshot rather than a lookup into `entries`: switching the year mid-edit
+  // replaces that list, and the form should keep its identity and its banner.
+  const [editingEntry, setEditingEntry] = useState<IncomeEntry | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  const editingEntry = editingId === null ? null : entries.find(e => e.id === editingId) ?? null;
+  const editingId = editingEntry?.id ?? null;
+  const busy = submitting || deletingId !== null;
 
   useEffect(() => {
     loadIncome();
@@ -39,7 +43,7 @@ export default function Income() {
   }
 
   function startEdit(entry: IncomeEntry) {
-    setEditingId(entry.id);
+    setEditingEntry(entry);
     setForm({
       date: entry.date,
       type: entry.type,
@@ -54,7 +58,7 @@ export default function Income() {
   }
 
   function cancelEdit() {
-    setEditingId(null);
+    setEditingEntry(null);
     setForm(EMPTY_FORM);
   }
 
@@ -77,8 +81,9 @@ export default function Income() {
         await api.updateIncome(editingId, payload);
       }
       cancelEdit();
-      // An edited date can move the entry out of the year being viewed; follow it
-      // rather than letting the row silently vanish from the table.
+      // A saved date can fall outside the year being viewed — on an edit that moves
+      // the entry, on an add that back-dates one. Follow it either way rather than
+      // letting the row land somewhere the table isn't showing.
       const savedYear = Number(payload.date.slice(0, 4));
       if (savedYear !== year) {
         setYear(savedYear);
@@ -98,7 +103,7 @@ export default function Income() {
       ? ' Its row in Google Sheets is already written and must be deleted by hand.'
       : '';
     if (!window.confirm(`Delete the ${entry.date} ${entry.type} entry?${sheetsWarning}`)) return;
-    setSubmitting(true);
+    setDeletingId(entry.id);
     try {
       await api.deleteIncome(entry.id);
       if (editingId === entry.id) cancelEdit();
@@ -106,7 +111,7 @@ export default function Income() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to delete income entry');
     } finally {
-      setSubmitting(false);
+      setDeletingId(null);
     }
   }
 
@@ -135,6 +140,10 @@ export default function Income() {
             <p className="col-span-2 md:col-span-4 text-sm text-amber-700 dark:text-amber-400">
               This entry is already written to Google Sheets — saving only changes this app, so the sheet row has to be corrected by hand.
             </p>
+          ) : editingEntry.sheets_retry_exhausted ? (
+            <p className="col-span-2 md:col-span-4 text-sm text-amber-700 dark:text-amber-400">
+              Google Sheets writes for this entry failed {editingEntry.sheets_retry_count} times and are no longer retried — it never reached the sheet and has to be added by hand.
+            </p>
           ) : (
             <p className="col-span-2 md:col-span-4 text-sm text-gray-500 dark:text-gray-400">
               This entry hasn't reached Google Sheets yet, so a pending retry will pick up these edits.
@@ -150,7 +159,7 @@ export default function Income() {
         <input type="number" step="0.01" placeholder="Net Pay" value={form.net_pay} onChange={e => setForm({ ...form, net_pay: e.target.value })} className={INPUT_CLASS} required />
         <input placeholder="Notes (optional)" value={form.information} onChange={e => setForm({ ...form, information: e.target.value })} className={INPUT_CLASS} />
         <div className="col-span-2 md:col-span-4 flex gap-3">
-          <button type="submit" disabled={submitting} className="flex-1 bg-blue-600 text-white rounded py-2 hover:bg-blue-700 disabled:opacity-50">
+          <button type="submit" disabled={busy} className="flex-1 bg-blue-600 text-white rounded py-2 hover:bg-blue-700 disabled:opacity-50">
             {submitting ? 'Saving...' : editingId === null ? 'Add Entry' : 'Save Changes'}
           </button>
           {editingId !== null && (
@@ -199,8 +208,10 @@ export default function Income() {
                   <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{formatCurrency(entry.net_pay)}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{entry.information}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={() => startEdit(entry)} disabled={submitting} className="text-blue-600 dark:text-blue-400 hover:underline text-sm disabled:opacity-50 disabled:no-underline">Edit</button>
-                    <button onClick={() => handleDelete(entry)} disabled={submitting} className="ml-3 text-red-600 dark:text-red-400 hover:underline text-sm disabled:opacity-50 disabled:no-underline">Delete</button>
+                    <button onClick={() => startEdit(entry)} disabled={busy} className="text-blue-600 dark:text-blue-400 hover:underline text-sm disabled:opacity-50 disabled:no-underline">Edit</button>
+                    <button onClick={() => handleDelete(entry)} disabled={busy} className="ml-3 text-red-600 dark:text-red-400 hover:underline text-sm disabled:opacity-50 disabled:no-underline">
+                      {deletingId === entry.id ? 'Deleting...' : 'Delete'}
+                    </button>
                   </td>
                 </tr>
               ))}

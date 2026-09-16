@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from typing import Optional
 from datetime import date
 
@@ -92,7 +92,22 @@ class IncomeOut(BaseModel):
     net_pay: float
     information: Optional[str] = None
     synced_to_sheets: bool = False
+    sheets_retry_count: int = 0
     created_at: Optional[str] = None
+
+    @computed_field
+    @property
+    def sheets_retry_exhausted(self) -> bool:
+        """True once the retry job will never pick this row up again.
+
+        The UI needs this to tell "not in the sheet yet, a retry will carry your
+        edits over" apart from "this will never reach the sheet, go fix it by
+        hand". Imported locally: sheets_writer pulls in the Sheets client chain,
+        and models must not depend on services at import time.
+        """
+        from services.sheets_writer import MAX_RETRIES
+
+        return not self.synced_to_sheets and self.sheets_retry_count >= MAX_RETRIES
 
 
 class IncomeIn(BaseModel):
