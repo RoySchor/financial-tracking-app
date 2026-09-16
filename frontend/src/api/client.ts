@@ -96,8 +96,17 @@ export interface IncomeEntry {
   net_pay: number;
   information: string | null;
   synced_to_sheets: boolean;
+  sheets_retry_count: number;
+  /** The retry job has given up on this row; it will never reach Sheets on its own. */
+  sheets_retry_exhausted: boolean;
   created_at: string | null;
 }
+
+/** The writable fields of an income entry — everything the server owns is excluded. */
+export type IncomeInput = Omit<
+  IncomeEntry,
+  'id' | 'synced_to_sheets' | 'sheets_retry_count' | 'sheets_retry_exhausted' | 'created_at'
+>;
 
 export interface Asset {
   id: number;
@@ -278,8 +287,12 @@ export const api = {
     request<{ deleted: boolean }>(`/recurring/${id}`, { method: 'DELETE' }),
 
   getIncome: (year: number) => request<IncomeEntry[]>(`/income?year=${year}`),
-  addIncome: (data: Omit<IncomeEntry, 'id' | 'synced_to_sheets' | 'created_at'>) =>
+  addIncome: (data: IncomeInput) =>
     request<IncomeEntry>('/income', { method: 'POST', body: JSON.stringify(data) }),
+  updateIncome: (id: number, data: IncomeInput) =>
+    request<IncomeEntry>(`/income/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteIncome: (id: number) =>
+    request<{ deleted: boolean }>(`/income/${id}`, { method: 'DELETE' }),
 
   getAssets: () => request<Asset[]>('/assets'),
   upsertAsset: (data: Omit<Asset, 'id' | 'last_updated' | 'synced_to_sheets'>) =>
