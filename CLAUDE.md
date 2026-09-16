@@ -47,6 +47,8 @@ make db-reset         # Drop and recreate DB (destructive)
 
 **Trips**: A trip groups transactions that may span multiple months. `trip_transactions.transaction_id` is the primary key, so a transaction belongs to at most one trip and totals can't double-count. Each trip carries `sheet_month`/`sheet_year` deciding which monthly tab receives its total, since a trip can span months but a tab covers one. The Sheets trip block (column E name / column F total, from `TRIP_BLOCK_START_ROW`) is rewritten wholesale on every change rather than tracking a cell per trip — positional addresses drift the moment a row is inserted by hand.
 
+**Editing or deleting an income entry does not re-sync Sheets**: income rows are appended positionally to the `<year> Income Breakdown` tab with no key back to the DB row, so `PUT`/`DELETE /income/{id}` leave `synced_to_sheets` alone — clearing it would append a duplicate instead of correcting the existing row. The sheet is fixed by hand and the UI says so.
+
 **Renaming a transaction does not re-sync Sheets**: `PATCH /transactions/{id}` deliberately leaves `synced_to_sheets` alone. Clearing it would make the retry job append a duplicate row instead of editing the existing one, so the sheet is corrected by hand and the UI says so.
 
 **Investment sync**: Holdings are snapshot-based (DELETE + INSERT per account per sync). Investment transactions use INSERT OR IGNORE with Plaid's transaction ID as PK for natural deduplication. Plaid API calls must happen OUTSIDE `with get_db()` blocks to avoid holding SQLite open during HTTP calls.

@@ -280,6 +280,10 @@ export const api = {
   getIncome: (year: number) => request<IncomeEntry[]>(`/income?year=${year}`),
   addIncome: (data: Omit<IncomeEntry, 'id' | 'synced_to_sheets' | 'created_at'>) =>
     request<IncomeEntry>('/income', { method: 'POST', body: JSON.stringify(data) }),
+  updateIncome: (id: number, data: Omit<IncomeEntry, 'id' | 'synced_to_sheets' | 'created_at'>) =>
+    request<IncomeEntry>(`/income/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteIncome: (id: number) =>
+    request<{ deleted: boolean }>(`/income/${id}`, { method: 'DELETE' }),
 
   getAssets: () => request<Asset[]>('/assets'),
   upsertAsset: (data: Omit<Asset, 'id' | 'last_updated' | 'synced_to_sheets'>) =>

@@ -33,6 +33,8 @@ export function isSameMonth(value: string, month: number, year: number): boolean
   return parsed.month === month && parsed.year === year;
 }
 
+/** '$1,234.56', with the sign ahead of the dollar sign: '-$1.30', not '$-1.30'. */
 export function formatCurrency(value: number): string {
-  return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const amount = Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${value < 0 ? '-' : ''}$${amount}`;
 }
