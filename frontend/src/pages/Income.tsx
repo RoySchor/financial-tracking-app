@@ -19,6 +19,8 @@ export default function Income() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
+  const editingEntry = editingId === null ? null : entries.find(e => e.id === editingId) ?? null;
+
   useEffect(() => {
     loadIncome();
   }, [year]);
@@ -75,7 +77,14 @@ export default function Income() {
         await api.updateIncome(editingId, payload);
       }
       cancelEdit();
-      await loadIncome();
+      // An edited date can move the entry out of the year being viewed; follow it
+      // rather than letting the row silently vanish from the table.
+      const savedYear = Number(payload.date.slice(0, 4));
+      if (savedYear !== year) {
+        setYear(savedYear);
+      } else {
+        await loadIncome();
+      }
     } catch (e) {
       const action = editingId === null ? 'add' : 'update';
       setError(e instanceof Error ? e.message : `Failed to ${action} income entry`);
@@ -85,13 +94,19 @@ export default function Income() {
   }
 
   async function handleDelete(entry: IncomeEntry) {
-    if (!window.confirm(`Delete the ${entry.date} ${entry.type} entry?`)) return;
+    const sheetsWarning = entry.synced_to_sheets
+      ? ' Its row in Google Sheets is already written and must be deleted by hand.'
+      : '';
+    if (!window.confirm(`Delete the ${entry.date} ${entry.type} entry?${sheetsWarning}`)) return;
+    setSubmitting(true);
     try {
       await api.deleteIncome(entry.id);
       if (editingId === entry.id) cancelEdit();
       await loadIncome();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to delete income entry');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -115,10 +130,16 @@ export default function Income() {
       )}
 
       <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-        {editingId !== null && (
-          <p className="col-span-2 md:col-span-4 text-sm text-amber-700 dark:text-amber-400">
-            Editing an entry only changes this app — the row already written to Google Sheets has to be corrected by hand.
-          </p>
+        {editingEntry && (
+          editingEntry.synced_to_sheets ? (
+            <p className="col-span-2 md:col-span-4 text-sm text-amber-700 dark:text-amber-400">
+              This entry is already written to Google Sheets — saving only changes this app, so the sheet row has to be corrected by hand.
+            </p>
+          ) : (
+            <p className="col-span-2 md:col-span-4 text-sm text-gray-500 dark:text-gray-400">
+              This entry hasn't reached Google Sheets yet, so a pending retry will pick up these edits.
+            </p>
+          )
         )}
         <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className={INPUT_CLASS} required />
         <input placeholder="Type" value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className={INPUT_CLASS} required />
@@ -178,8 +199,8 @@ export default function Income() {
                   <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{formatCurrency(entry.net_pay)}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{entry.information}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
-                    <button onClick={() => startEdit(entry)} className="text-blue-600 dark:text-blue-400 hover:underline text-sm">Edit</button>
-                    <button onClick={() => handleDelete(entry)} className="ml-3 text-red-600 dark:text-red-400 hover:underline text-sm">Delete</button>
+                    <button onClick={() => startEdit(entry)} disabled={submitting} className="text-blue-600 dark:text-blue-400 hover:underline text-sm disabled:opacity-50 disabled:no-underline">Edit</button>
+                    <button onClick={() => handleDelete(entry)} disabled={submitting} className="ml-3 text-red-600 dark:text-red-400 hover:underline text-sm disabled:opacity-50 disabled:no-underline">Delete</button>
                   </td>
                 </tr>
               ))}
