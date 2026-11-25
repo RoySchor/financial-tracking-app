@@ -10,6 +10,10 @@ from plaid.model.transactions_get_request_options import TransactionsGetRequestO
 from plaid.model.investments_holdings_get_request import InvestmentsHoldingsGetRequest
 from plaid.model.investments_transactions_get_request import InvestmentsTransactionsGetRequest
 
+# (connect, read) seconds. plaid-python has no client-wide default and waits
+# forever otherwise, which can wedge a uvicorn worker on a dead connection.
+PLAID_TIMEOUT = (10, 90)
+
 
 def get_plaid_client():
     configuration = plaid.Configuration(
@@ -34,7 +38,7 @@ def get_access_tokens() -> list[tuple[str, str]]:
 
 def get_accounts(client, access_token: str) -> list[dict]:
     request = AccountsGetRequest(access_token=access_token)
-    response = client.accounts_get(request)
+    response = client.accounts_get(request, _request_timeout=PLAID_TIMEOUT)
     results = []
     for acct in response.accounts:
         results.append({
@@ -59,7 +63,7 @@ def sync_transactions(client, access_token: str, cursor: str | None):
             access_token=access_token,
             cursor=next_cursor,
         )
-        response = client.transactions_sync(request)
+        response = client.transactions_sync(request, _request_timeout=PLAID_TIMEOUT)
         added.extend(response.added)
         modified.extend(response.modified)
         removed.extend(response.removed)
@@ -77,7 +81,7 @@ def sync_transactions(client, access_token: str, cursor: str | None):
 def get_investment_holdings(client, access_token: str) -> dict | None:
     try:
         request = InvestmentsHoldingsGetRequest(access_token=access_token)
-        response = client.investments_holdings_get(request)
+        response = client.investments_holdings_get(request, _request_timeout=PLAID_TIMEOUT)
         return {
             "accounts": response.accounts,
             "holdings": response.holdings,
@@ -101,7 +105,7 @@ def get_investment_transactions(client, access_token: str, start_date: date | No
             start_date=start_date,
             end_date=end_date,
         )
-        response = client.investments_transactions_get(request)
+        response = client.investments_transactions_get(request, _request_timeout=PLAID_TIMEOUT)
         return response.investment_transactions
     except plaid.ApiException as e:
         if "PRODUCTS_NOT_READY" in str(e.body) or "PRODUCT_NOT_READY" in str(e.body):
@@ -125,7 +129,7 @@ def backfill_transactions(client, access_token: str, start_date: date | None = N
             end_date=end_date,
             options=TransactionsGetRequestOptions(offset=offset, count=500),
         )
-        response = client.transactions_get(request)
+        response = client.transactions_get(request, _request_timeout=PLAID_TIMEOUT)
         all_transactions.extend(response.transactions)
         total = response.total_transactions
         offset += len(response.transactions)

@@ -7,6 +7,10 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+# (connect, read) seconds. gspread's default is no timeout, so a stalled
+# Google response would block the request (and the worker) indefinitely.
+SHEETS_TIMEOUT = (10, 60)
+
 
 def is_quota_error(exc: Exception) -> bool:
     """True for Sheets 429s (rate/quota), which say nothing about the row itself."""
@@ -20,7 +24,9 @@ def get_sheets_client():
         return None
 
     credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
-    return gspread.authorize(credentials)
+    client = gspread.authorize(credentials)
+    client.set_timeout(SHEETS_TIMEOUT)
+    return client
 
 
 def get_spreadsheet():
